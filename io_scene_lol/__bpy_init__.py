@@ -271,13 +271,12 @@ def export_char(MODEL_DIR='',
     #         True), constraint_orientation='GLOBAL')
 
 def import_sco(filepath):
-    import lolMesh
     lolMesh.buildSCO(filepath)
 
 def menu_func_import(self, context):
     self.layout.operator(IMPORT_OT_lol.bl_idname, text='League of Legends Character (.skn;.skl)')
     # self.layout.operator(IMPORT_OT_lolanm.bl_idname, text='League of Legends Animation(.anm)')
-    # self.layout.operator(IMPORT_OT_sco.bl_idname, text='League of Legends Particle (.sco)')
+    self.layout.operator(IMPORT_OT_sco.bl_idname, text='League of Legends Particle (.sco)')
 
 
 def menu_func_export(self, context):

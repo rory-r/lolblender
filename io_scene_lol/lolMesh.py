@@ -635,6 +635,9 @@ def importSCO(filename):
                     uvs[0] = [float(x) for x in fields[5:7]]
                     uvs[1] = [float(x) for x in fields[7:9]]
                     uvs[2] = [float(x) for x in fields[9:11]]
+                    uvs[0][1] = 1 - uvs[0][1]
+                    uvs[1][1] = 1 - uvs[1][1]
+                    uvs[2][1] = 1 - uvs[2][1]
 
                     objects[-1].faceList.append(vIds)
                     #Blender can only handle material names of 16 characters or
@@ -649,8 +652,7 @@ def importSCO(filename):
                         objects[-1].materialDict[mat] = [k]
 
                     #Add uvs to the face index
-                    for k,j in enumerate(vIds):
-                        objects[-1].uvDict[j]=uvs[k]
+                    objects[-1].uvDict[k] = uvs
 
     #Close out and return the parsed objects
     fid.close()
@@ -658,6 +660,8 @@ def importSCO(filename):
 
 def buildSCO(filename):
     import bpy
+    import bmesh
+    import mathutils
     scoObjects = importSCO(filename)
 
     for sco in scoObjects:
@@ -672,27 +676,44 @@ def buildSCO(filename):
 
         scene.objects.link(meshObj)
 
-        #print(sco.materialList)
-        for matID, mat in enumerate(sco.materialDict.keys()):
-            faceList = sco.materialDict[mat]
-            #Blener can only handle material names of 16 chars.  Construct a
-            #unique name ID using ##_name
-            if len(mat) > 16:
-                mat = str(matID).zfill(2) + '_' + mat[:13]
-
-            uvtex = meshObj.data.uv_textures.new(mat)
-            for k, face in enumerate(meshObj.data.faces):
-
-                vtxIds = face.vertices[:]
-                bl_tface = uvtex.data[k]
-                bl_tface.uv1[0] = sco.uvDict[vtxIds[0]][0]
-                bl_tface.uv1[1] = 1-sco.uvDict[vtxIds[0]][1]
-
-                bl_tface.uv2[0] = sco.uvDict[vtxIds[1]][0]
-                bl_tface.uv2[1] = 1-sco.uvDict[vtxIds[1]][1]
-
-                bl_tface.uv3[0] = sco.uvDict[vtxIds[2]][0]
-                bl_tface.uv3[1] = 1-sco.uvDict[vtxIds[2]][1]
+        bpy.context.scene.objects.active = meshObj
+        
+        bpy.ops.object.mode_set(mode='EDIT')
+        
+        bm = bmesh.from_edit_mesh(mesh)
+        bm.faces.ensure_lookup_table()
+        
+        for matslotIndex, matName in enumerate(sco.materialDict.keys()):
+            tex = bpy.data.textures.new(matName + '_texImage', type='IMAGE')
+            
+            mat = bpy.data.materials.new(matName)
+            mat.use_shadeless = True
+            
+            mtex = mat.texture_slots.add()
+            mtex.texture = tex
+            mtex.texture_coords = 'UV'
+            mtex.use_map_color_diffuse = True
+            
+            meshObj.data.materials.append(mat)
+            
+            bpy.ops.mesh.select_all(action='DESELECT')
+            meshObj.active_material_index = matslotIndex
+            
+            for faceIndex in sco.materialDict[matName]:
+                bm.faces[faceIndex].select = True
+            
+            bpy.ops.object.material_slot_assign()
+        
+        uvtexName = 'scoUVtex'
+        meshObj.data.uv_textures.new(uvtexName)
+        
+        uvLayer = bm.loops.layers.uv[uvtexName]
+        for f in bm.faces:
+            for i, loop in enumerate(f.loops):
+                loop[uvLayer].uv = mathutils.Vector(sco.uvDict[f.index][i])
+        
+        bm.free()
+        bpy.ops.object.mode_set(mode='OBJECT')
 
         mesh.update()
         
