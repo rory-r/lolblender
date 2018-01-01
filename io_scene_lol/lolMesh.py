@@ -717,6 +717,96 @@ def buildSCO(filename):
 
         mesh.update()
         
+
+def exportSCO(meshObj, output_filepath):
+    import bpy
+    import mathutils
+    import bmesh
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='DESELECT')
+    meshObj.select = True
+    mesh = meshObj.data
+    
+    scoName = meshObj.name
+    vertCount = len(mesh.vertices)
+    
+    vertexList = []
+    
+    centralpoint = mathutils.Vector([0,0,0])
+    for vert in mesh.vertices:
+        vertexList.append(vert.co.copy())
+        centralpoint += vert.co
+    centralpoint /= vertCount
+    print(vertexList[0])
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    
+    faceCount = len(bm.faces)
+    
+    faceList = []
+    materialDict = {}
+    uvList = [None] * faceCount
+    
+    uvLayer = bm.loops.layers.uv['scoUVtex']
+    for m, matSlot in enumerate(meshObj.material_slots):
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.context.active_object.active_material_index = m
+        bpy.ops.object.material_slot_select()
+        
+        for f in bm.faces:
+            if f.select == True:
+                materialDict.setdefault(matSlot.material.name, []).append(f.index)
+                
+                faceList.append([])
+                
+                uvList[f.index] = []
+                for loop in f.loops:
+                    faceList[-1].append(loop.vert.index)
+                    uvList[f.index].append(loop[uvLayer].uv.copy())
+                    uvList[f.index][-1][1] = 1 - uvList[f.index][-1][1]
+    
+    bm.free()
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    scoFid = open(output_filepath, 'w')
+    
+    scoFid.write('[ObjectBegin]\n')
+    
+    scoFid.write('Name= ' + scoName + '\n')
+    scoFid.write('CentralPoint= ' + '{:.4f}'.format(centralpoint[0]) + ' ' + '{:.4f}'.format(centralpoint[1]) + ' ' + '{:.4f}'.format(centralpoint[2]) + '\n')
+    scoFid.write('Verts= ' + str(vertCount) + '\n')
+    print(vertexList[0])
+    print(vertexList[0][1])
+    print('{:.4f}'.format(vertexList[0][1]))
+    for vert in vertexList:
+        scoFid.write('{:.4f}'.format(vert[0]) + ' ' + '{:.4f}'.format(vert[1]) + ' ' + '{:.4f}'.format(vert[2]) + '\n')
+    
+    scoFid.write('Faces= ' + str(faceCount) + '\n')
+    for matName in materialDict.keys():
+        faces = []
+        for fIndex in materialDict[matName]:
+            faces.append(faceList[fIndex])
+        for fIndex, f in enumerate(faces):
+            indexCount = len(f)
+            scoFid.write(str(indexCount) + '	')
+            
+            scoFid.write('{:4d}'.format(f[0]))
+            for i in range(1, indexCount, 1):
+                scoFid.write('{:5d}'.format(f[i]))
+            scoFid.write('	')
+            scoFid.write('{:20}'.format(matName))
+            scoFid.write('	')
+            for i, uvs in enumerate(uvList[fIndex]):
+                if i != 0:
+                    scoFid.write(' ')
+                scoFid.write('{:.12f}'.format(uvs[0]) + ' ' + '{:.12f}'.format(uvs[1]))
+            scoFid.write('\n')
+    
+    scoFid.write('[ObjectEnd]\n\n')
+
+
 if __name__ == '__main__':
     (header, materials, numIndices, 
             numVertices, indices, vertices) = importSKN(testFile)

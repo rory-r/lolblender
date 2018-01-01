@@ -142,6 +142,23 @@ class IMPORT_OT_sco(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         import_sco(self.properties.filepath)
         return {'FINISHED'}
+
+class EXPORT_OT_sco(bpy.types.Operator, ExportHelper): #BilbozZ Class
+    '''Export a Leauge of Legends .sco file'''
+    
+    bl_idname="export.sco"
+    bl_label="Export .sco"
+    
+    filename_ext = '.sco'
+    
+    def execute(self, context):
+        result = export_sco(self.properties.filepath)
+        
+        if (result == {'CANCELLED'}):
+            print('No valid mesh is selected')
+        
+        return result
+
 def import_char(MODEL_DIR="", SKN_FILE="", SKL_FILE="", DDS_FILE="",
         CLEAR_SCENE=True, APPLY_WEIGHTS=True, APPLY_TEXTURE=True):
     '''Import a LoL Character
@@ -273,6 +290,20 @@ def export_char(MODEL_DIR='',
 def import_sco(filepath):
     lolMesh.buildSCO(filepath)
 
+def export_sco(filepath):
+    #export scoFile
+    
+    import bpy
+    
+    if bpy.context.object.type =='MESH':
+        meshObj = bpy.context.object
+    else:
+        return {'CANCELLED'}
+    
+    lolMesh.exportSCO(meshObj, filepath)
+    
+    return {'FINISHED'}
+
 def menu_func_import(self, context):
     self.layout.operator(IMPORT_OT_lol.bl_idname, text='League of Legends Character (.skn;.skl)')
     # self.layout.operator(IMPORT_OT_lolanm.bl_idname, text='League of Legends Animation(.anm)')
@@ -281,6 +312,7 @@ def menu_func_import(self, context):
 
 def menu_func_export(self, context):
     self.layout.operator(EXPORT_OT_lol.bl_idname, text="League of Legends (.skn)")
+    self.layout.operator(EXPORT_OT_sco.bl_idname, text="League of Legends Particle (.sco)")
 
 def register():
     bpy.utils.register_class(IMPORT_OT_lol)
@@ -289,6 +321,7 @@ def register():
     bpy.types.INFO_MT_file_import.append(menu_func_import)
 
     bpy.utils.register_class(EXPORT_OT_lol)
+    bpy.utils.register_class(EXPORT_OT_sco)
     bpy.types.INFO_MT_file_export.append(menu_func_export)
 
 def unregister():
