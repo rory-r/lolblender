@@ -69,12 +69,12 @@ class sknMaterial():
         fields = struct.unpack(self.__format__, buf)
 
         #self.name = bytes.decode(fields[1])
-        self.name = fields[0]
+        self.name = bytes.decode(fields[0]).rstrip('\0')
         (self.startVertex, self.numVertices) = fields[1:3]
         (self.startIndex, self.numIndices) = fields[3:5]
 
     def toFile(self, sknFid):
-        buf = struct.pack(self.__format__, self.name,
+        buf = struct.pack(self.__format__, self.name.encode(),
                 self.startVertex, self.numVertices,
                 self.startIndex, self.numIndices)
         sknFid.write(buf)
@@ -254,6 +254,8 @@ def buildMesh(filepath):
     import bpy
     from os import path
     (header, materials, metaData, indices, vertices) = importSKN(filepath)
+    import bmesh
+    
     ''' 
     if header.version > 0 and materials[0].numMaterials == 2:
         print('ERROR:  Skins with numMaterials = 2 are currently unreadable.  Exiting')
@@ -314,8 +316,41 @@ def buildMesh(filepath):
     #Needs to be done after the UV unwrapping 
     obj.data.vertices.foreach_set('normal', normList) 
 
+    for m in materials:
+        tex = bpy.data.textures.new(m.name + '_texImage', type='IMAGE')
+        
+        mat = bpy.data.materials.new(m.name)
+        mat.use_shadeless = True
+        
+        mtex = mat.texture_slots.add()
+        mtex.texture = tex
+        mtex.texture_coords = 'UV'
+        mtex.use_map_color_diffuse = True
+        
+        obj.data.materials.append(mat)
+    
+    bpy.context.scene.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    
+    for m, material in enumerate(materials):
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.context.active_object.active_material_index = m
+        
+        for i in range(material.startIndex, material.startIndex + material.numIndices, 3):
+            f = bm.faces.get([bm.verts[indices[i]], bm.verts[indices[i+1]], bm.verts[indices[i+2]]])
+            f.select = True
+        
+        bpy.ops.object.material_slot_assign()
+    
+    bm.free()
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
     #Create material
-    materialName = 'lolMaterial'
+    #materialName = 'lolMaterial'
     #material = bpy.data.materials.ne(materialName)
     mesh.update() 
     #set active
@@ -354,6 +389,7 @@ def addDefaultWeights(boneList, sknVertices, armatureObj, meshObj):
 
 def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION):
     import bpy
+    import bmesh
 
     if VERSION not in [1,2,4] and not BASE_ON_IMPORT:
         raise ValueError("Version %d not supported! Try versions 1, 2, or 4" % VERSION)
@@ -368,13 +404,58 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     #Build vertex index list and dictionary of vertex-uv pairs
     indices = []
     vtxUvs = {}
-    for idx, loop in enumerate(meshObj.data.loops):
-        vertex = loop.vertex_index
-        indices.append(vertex)
-        #The V coordinate need to be flipped back - it was flipped on importing.
-        uv = meshObj.data.uv_layers['lolUVtex'].data[idx].uv
-        vtxUvs[vertex] = [uv[0], 1-uv[1]]
+    
+    #Read materials
+    matHeaders = []
+    
+    bpy.ops.object.mode_set(mode='EDIT')
+    
+    bm = bmesh.from_edit_mesh(meshObj.data)
+    bm.verts.ensure_lookup_table()
+    
+    for m, matSlot in enumerate(meshObj.material_slots):
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.context.active_object.active_material_index = m
+        bpy.ops.object.material_slot_select()
         
+        startVert = 2147483647 #highest possible int-Value
+        startIndex = len(indices)
+        
+        vertCount = 0
+        for vert in bm.verts:
+            if vert.select == True:
+                vertCount += 1
+                if vert.index < startVert:
+                    startVert = vert.index
+        
+        uvLayer = bm.loops.layers.uv['lolUVtex']
+        for f in bm.faces:
+            if f.select == True:
+                for vert in f.verts:
+                    vertIndex = vert.index
+                    vertLoops = vert.link_loops
+                    vertLoopCount = len(vertLoops)
+                    
+                    indices.append(vertIndex)
+                    
+                    #ensure that every loop of one vertex has the same uv-Coords because the file format does only support one uv-Coord per Vertex
+                    uv = vertLoops[0][uvLayer].uv
+                    for i in range(1, vertLoopCount, 1):
+                        loopUV = vertLoops[i][uvLayer].uv
+                        #if loopUV != uv:
+                        #    raise ValueError("The LoL Mesh-Format is not capable of seams in the UVs! Only one UV-Coordinate per Vertex possible!")
+                    
+                    vtxUvs[vertIndex] = [uv[0], 1-uv[1]]
+        
+        indexCount = len(indices) - startIndex
+        matHeaders.append(sknMaterial(matSlot.material.name, startVert, vertCount, startIndex, indexCount))
+    
+    bm.free()
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    numMats = len(meshObj.material_slots)
+    
     numIndices = len(indices)
     numVertices = len(meshObj.data.vertices)
 
@@ -385,16 +466,8 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
         header = import_header
         VERSION = header.version
         
-        numMats = len(import_mats)
-        if numMats > 1:
-            raise ValueError("More than 1 material (%d); not supported" % numMats)
-        matHeaders = import_mats
-
         meta_data = import_meta_data
         
-        #override previous #verts, #idxs so no memory error!
-        matHeaders[0].numIndices = numIndices
-        matHeaders[0].numVertices = numVertices
         meta_data.numIndices = numIndices
         meta_data.numVertices = numVertices
     else:
@@ -402,11 +475,6 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
         header.magic = 1122867
         header.version = VERSION
         header.numObjects = 1
-
-        numMats = 1
-        matHeaders = []
-        mat = sknMaterial(b'test', 0, numVertices, 0, numIndices)
-        matHeaders.append(mat)
 
         meta_data = sknMetaData(0, numIndices, numVertices)
 

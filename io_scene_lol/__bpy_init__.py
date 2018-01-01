@@ -208,21 +208,11 @@ def import_char(MODEL_DIR="", SKN_FILE="", SKL_FILE="", DDS_FILE="",
             pass
         bpy.ops.object.select_all(action='DESELECT')
 
-        img = bpy.data.images.load(DDS_FILEPATH)
-        img.source = 'FILE'
-
-        img_name = DDS_FILE[:-4]  # remove .dds
-        tex = bpy.data.textures.new(img_name + '_texImage', type='IMAGE')
-        tex.image = img
-        mat = bpy.data.materials.new(name=(img_name + '_mat'))
-        mat.use_shadeless = True
-
-        mtex = mat.texture_slots.add()
-        mtex.texture = tex
-        mtex.texture_coords = 'UV'
-        mtex.use_map_color_diffuse = True
-
-        meshObj.data.materials.append(mat)
+        for matSlot in meshObj.material_slots:
+            img = bpy.data.images.load(DDS_FILEPATH)
+            img.source = 'FILE'
+            img.use_alpha = False   #BilbozZ
+            matSlot.material.texture_slots[0].texture.image = img
 
 def import_animation(MODEL_DIR="", ANM_FILE=""):
     '''Import an Animation for a LoL character
