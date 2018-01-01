@@ -431,6 +431,10 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
         uvLayer = bm.loops.layers.uv['lolUVtex']
         for f in bm.faces:
             if f.select == True:
+                #check if the face is a triangle
+                if (len(f.verts) != 3):
+                    raise ValueError("Found a face which is not a triangle. Every face has to be a triangle!")
+                
                 for vert in f.verts:
                     vertIndex = vert.index
                     vertLoops = vert.link_loops
