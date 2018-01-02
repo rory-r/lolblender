@@ -297,6 +297,9 @@ def importSKL(filepath):
 
 def buildSKL(boneList, version):
     import bpy
+    import math
+    import mathutils
+    
     #Create Blender Armature
     bpy.ops.object.armature_add(location=(0,0,0), enter_editmode=True)
     obj = bpy.context.active_object
@@ -313,68 +316,37 @@ def buildSKL(boneList, version):
     if version in [1,2]:
         for boneID, bone in enumerate(boneList):
             boneName = bone.name.rstrip('\x00')
-            try:
-                boneHead = (bone.matrix[0][3], bone.matrix[1][3], bone.matrix[2][3])
-            except:
-                print(bone.matrix)
-            boneParentID = bone.parent
-
-            boneAlignToAxis= (bone.matrix[0][2], bone.matrix[1][2],
-                    bone.matrix[2][2])
-
-
             newBone = arm.edit_bones.new(boneName)
-            #newBone.head[:] = boneTail
             
-            #If this is a root bone set the y offset to 0 for the head element
-            #if boneParentID == -1:
-            #    newBone.head[:] = (boneHead[0],0,boneHead[2])
-            newBone.head = boneHead
-
-            #If this bone is a child, find the parent's tail and attach this bone's
-            #head to it
+            boneMatrix = mathutils.Matrix()
+            for x in range(4):
+                for y in range(3):
+                    boneMatrix[y][x] = bone.matrix[y][x]
+            
+            newBone.head = (bone.matrix[0][3], bone.matrix[1][3], bone.matrix[2][3])
+            
+            #rotVector is the y-Axis of the bone
+            rotVector = mathutils.Vector((bone.matrix[0][1], bone.matrix[1][1], bone.matrix[2][1]))
+            newBone.tail = newBone.head + rotVector * 3
+            
+            #calculate the roll of the bone based on the x-Vector the bone has before the roll is applied
+            #and the x-Vector it should have after applying it
+            newRollVec = mathutils.Vector([bone.matrix[0][0], bone.matrix[1][0], bone.matrix[2][0]])
+            oldRollVec = mathutils.Vector([newBone.matrix[0][0], newBone.matrix[1][0], newBone.matrix[2][0]])
+            normal = mathutils.Vector((bone.matrix[0][1], bone.matrix[1][1], bone.matrix[2][1]))
+            
+            #https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
+            roll = math.atan2(oldRollVec.cross(newRollVec) * normal, oldRollVec * newRollVec)
+            
+            newBone.roll = roll
+            
+            boneParentID = bone.parent
+            
             if boneParentID > -1:
                 boneParentName = boneList[boneParentID].name
                 parentBone = arm.edit_bones[boneParentName]
                 newBone.parent = parentBone
-                #build chains of successively parented bones
-                # if boneParentID == (boneID - 1):
-                if len(parentBone.children) == 1: 
-                    parentBone.tail = newBone.head
-                    # newBone.use_connect = True
 
-
-            # if newBone.length == 0:
-            #     newBone.length = 10
-            if newBone.head == newBone.tail:
-                newBone.tail.y += .001
-
-        #Final loop through bones.  Find bones w/out children & align to parent (for
-        #now
-
-        for bone in arm.edit_bones:
-            if bone.length == 0:
-                bone.length = 1
-            if len(bone.children) == 0:  # bones without children get aligned to parents?
-                bone.length = 10
-                if bone.parent:
-                    if bone.parent.tail != bone.head: # if parent isn't chained
-                                                      # directly to this bone
-                        bone.tail = bone.head         # then this is "end" pos
-                        bone.head = bone.parent.tail
-                    else:
-                        bone.align_orientation(bone.parent)
-            else:   # for bones w/ children, set tail to avg of all direct
-                    # children, or buffbone
-                numChildren = len(bone.children)
-                pos = mathutils.Vector([0,0,0])
-                for child in bone.children:
-                    if (child.name.isupper() or  # if buffbone, set pos to it
-                            child.name.lower().count('buffbone')):
-                        pos = child.head
-                        break
-                    pos += child.head/numChildren
-                bone.tail = pos
     elif version == 0:
 
         for boneID, bone in enumerate(boneList):
