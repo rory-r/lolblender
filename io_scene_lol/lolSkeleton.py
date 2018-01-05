@@ -377,8 +377,16 @@ def buildSKL(boneList, version):
                 # parentPos = mathutils.Vector(boneList[boneParentID].position)
                 parentPos = parentBone.head
             newBone.head = parentPos + boneHead
-            if newBone.length == 0:
-                newBone.tail[1] += .001
+            boneMatrix = bone.quat.to_matrix()
+            newBone.tail = newBone.head + mathutils.Vector([boneMatrix[0][1],boneMatrix[1][1],boneMatrix[2][1]])
+            
+            newRollVec = mathutils.Vector([boneMatrix[0][0], boneMatrix[1][0], boneMatrix[2][0]])
+            oldRollVec = mathutils.Vector([newBone.matrix[0][0], newBone.matrix[1][0], newBone.matrix[2][0]])
+            normal = mathutils.Vector((boneMatrix[0][1], boneMatrix[1][1], boneMatrix[2][1]))
+            #https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
+            roll = math.atan2(oldRollVec.cross(newRollVec) * normal, oldRollVec * newRollVec)
+            
+            newBone.roll = roll
 
         # set bones with children to be average of the
         # for boneID, bone in enumerate(boneList):
@@ -388,31 +396,6 @@ def buildSKL(boneList, version):
         #         for b in children[boneID]['all']:
         #             pos += arm.edit_bones[b].head/numChildren
         #         arm.edit_bones[bone.name].tail = pos
-
-
-        for bone in arm.edit_bones:
-            if bone.length == 0:
-                bone.length = 1
-            if len(bone.children) == 0:  # bones without children get aligned to parents?
-                bone.length = 10
-                if bone.parent:
-                    if bone.parent.tail != bone.head: # if parent isn't chained
-                                                      # directly to this bone
-                        bone.tail = bone.head         # then this is "end" pos
-                        bone.head = bone.parent.tail
-                    else:
-                        bone.align_orientation(bone.parent)
-            else:   # for bones w/ children, set tail to avg of all direct
-                    # children, or buffbone
-                numChildren = len(bone.children)
-                pos = mathutils.Vector([0,0,0])
-                for child in bone.children:
-                    if (child.name.isupper() or  # if buffbone, set pos to it
-                            child.name.lower().count('buffbone')):
-                        pos = child.head
-                        break
-                    pos += child.head/numChildren
-                bone.tail = pos
 
     bpy.ops.object.mode_set(mode='OBJECT')
 
