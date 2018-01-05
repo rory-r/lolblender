@@ -270,7 +270,18 @@ def applyANM(header, boneList):
     pb = ob.pose.bones
 
     restPose = {}
+    parentOffset = {}
+    parentOffRot = {}
+    
     for b in bs:
+        poseBone = pb[b.name]
+        if poseBone.parent != None:
+            parentOffset[b.name] = mathutils.Vector(poseBone.head - poseBone.parent.head) * poseBone.matrix
+            parentOffRot[b.name] = pb[b.parent.name].matrix.to_quaternion().rotation_difference(pb[b.name].matrix.to_quaternion())
+        else:
+            parentOffset[b.name] = mathutils.Vector(poseBone.head) * poseBone.matrix
+            parentOffRot[b.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0])
+        
         rot = b.matrix_local.decompose()[1]
 
         # multiply below by desired translation in world coords to get new
@@ -306,7 +317,7 @@ def applyANM(header, boneList):
                 armatureBone = eb[n]
                 poseBone = pb[n]
                 bone = bs[n]
-
+                bonePos = bonePositions[n]
                 if poseBone.parent:
                     # armatureBone.head = poseBone.parent.tail
                     parentName = poseBone.parent.name
@@ -315,23 +326,14 @@ def applyANM(header, boneList):
                     # boneOrientations[n] = parOrientation * b.orientations[f]
                     # bonePositions[n] = bonePositions[parentName] + parOrientation * b.positions[f]
                     # armatureBone.head = armatureBone.parent.tail
+                    bonePos = bonePos * pb[parentName].matrix.inverted()
+                    bonePos = bonePos * bs[n].matrix_local
                 else:
                     parOrientation = mathutils.Quaternion([1,0,0,0])
+                
+                poseBone.rotation_quaternion = parentOffRot[n].inverted() * boneOrientations[n]
+                poseBone.location = bonePos - parentOffset[n]
 
-                wantedPos = bonePositions[n]
-                # restPos = restPose[n]['h']
-                restPos = poseBone.head
-                rot = restPose[n]['rotInv']
-                newLoc = wantedPos - restPos
-                newLoc.rotate(rot)
-                poseBone.location = newLoc  #wantedPos - restPos
-
-                orient = (restPose[n]['rotInv'] * b.orientations[f] *
-                        restPose[n]['rot'])
-                poseBone.rotation_quaternion = orient
-                # poseBone.rotation_quaternion = parOrientation
-                # poseBone.rotation_quaternion = boneOrientations[n]
-                # armatureBone.tail = bPos
                 for dp in ["rotation_quaternion", "location"]:
                     pb[n].keyframe_insert(data_path=dp, frame=f)
             # ob.keyframe_insert(data_path="pose")

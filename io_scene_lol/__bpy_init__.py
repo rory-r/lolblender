@@ -306,7 +306,7 @@ def export_sco(filepath):
 
 def menu_func_import(self, context):
     self.layout.operator(IMPORT_OT_lol.bl_idname, text='League of Legends Character (.skn;.skl)')
-    # self.layout.operator(IMPORT_OT_lolanm.bl_idname, text='League of Legends Animation(.anm)')
+    self.layout.operator(IMPORT_OT_lolanm.bl_idname, text='League of Legends Animation(.anm)')
     self.layout.operator(IMPORT_OT_sco.bl_idname, text='League of Legends Particle (.sco)')
 
 
