@@ -94,6 +94,39 @@ class IMPORT_OT_lolanm(bpy.types.Operator, ImportHelper):
                
         return {'FINISHED'}
 
+
+class EXPORT_OT_lolanm(bpy.types.Operator, ImportHelper):
+    bl_label="Export LoL Animation"
+    bl_idname="export.lolanm"
+    
+    OUTPUT_FILE = props.StringProperty(name='Export File', description='File to which animation will be exported')
+    INPUT_FILE = props.StringProperty(name='Import File', description='File to import certain metadata from')
+    OVERWRITE_FILE_VERSION = props.BoolProperty(name='Overwrite File Version', description='Write a version different from the imported file', default=False)
+    VERSION = props.IntProperty(name='File Version', description='Overwrite file version', default=3)
+    
+    filename_ext = '.anm'
+    def draw(self, context):
+        layout = self.layout
+        fileProps = context.space_data.params
+        self.MODEL_DIR = fileProps.directory
+
+        selectedFileExt = path.splitext(fileProps.filename)[-1].lower()
+        
+        self.OUTPUT_FILE = fileProps.filename
+
+        box = layout.box()
+        box.prop(self.properties, 'OUTPUT_FILE')
+        box.prop(self.properties, 'INPUT_FILE')
+        box.prop(self.properties, 'OVERWRITE_FILE_VERSION')
+        if self.OVERWRITE_FILE_VERSION:
+            box.prop(self.properties, 'VERSION')
+        
+    def execute(self, context):
+        export_animation(MODEL_DIR=self.MODEL_DIR, OUTPUT_FILE=self.OUTPUT_FILE, INPUT_FILE=self.INPUT_FILE, OVERWRITE_FILE_VERSION=self.OVERWRITE_FILE_VERSION, VERSION=self.VERSION)
+        
+        return {'FINISHED'}
+
+
 class EXPORT_OT_lol(bpy.types.Operator, ExportHelper):
     '''Export a mesh as a League of Legends .skn file'''
 
@@ -242,7 +275,19 @@ def import_animation(MODEL_DIR="", ANM_FILE=""):
 
     animationHeader, boneList = lolAnimation.importANM(ANM_FILEPATH)
     lolAnimation.applyANM(animationHeader, boneList)
+
+def export_animation(MODEL_DIR='', OUTPUT_FILE='untitled.anm', INPUT_FILE='', OVERWRITE_FILE_VERSION=False, VERSION=3):
+    import bpy
     
+    if bpy.context.object.type =='ARMATURE':
+        skelObj = bpy.context.object
+    else:
+        raise KeyError
+    
+    input_filepath = path.join(MODEL_DIR, INPUT_FILE)
+    output_filepath = path.join(MODEL_DIR, OUTPUT_FILE)
+    
+    lolAnimation.exportANM(skelObj, output_filepath, input_filepath, OVERWRITE_FILE_VERSION, VERSION)
 
 def export_char(MODEL_DIR='',
                 OUTPUT_FILE='untitled.skn',
@@ -312,6 +357,7 @@ def menu_func_import(self, context):
 
 def menu_func_export(self, context):
     self.layout.operator(EXPORT_OT_lol.bl_idname, text="League of Legends (.skn)")
+    self.layout.operator(EXPORT_OT_lolanm.bl_idname, text="League of Legends Animation(.anm)")
     self.layout.operator(EXPORT_OT_sco.bl_idname, text="League of Legends Particle (.sco)")
 
 def register():
@@ -321,6 +367,7 @@ def register():
     bpy.types.INFO_MT_file_import.append(menu_func_import)
 
     bpy.utils.register_class(EXPORT_OT_lol)
+    bpy.utils.register_class(EXPORT_OT_lolanm)
     bpy.utils.register_class(EXPORT_OT_sco)
     bpy.types.INFO_MT_file_export.append(menu_func_export)
 

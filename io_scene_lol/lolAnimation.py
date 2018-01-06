@@ -134,9 +134,12 @@ class anmHeader():
     
     def toFile(self, anmFile):
         """Writes the header object to a raw binary file"""
-        data = struct.pack(self.__format__, self.id, self.version,
-                self.magic, self.numBones, self.numFrames, self.playbackFPS)
+        data = struct.pack(self.__format__i, self.id, self.version)
         anmFile.write(data)
+        
+        if self.version in [0,2,3]:
+            data = struct.pack(self.__format__v023, self.magic, self.numBones, self.numFrames, self.playbackFPS)
+            anmFile.write(data)
 
 
 class anmBone():
@@ -213,11 +216,10 @@ class anmBone():
 
     def toFile(self, anmFile, version):
         """Writes animation bone object to a binary file FID"""
-        if version in [0,1,2,3]:
-            data = struct.pack(self.__format__i, self.name, self.unknown)
+        if version in [0,2,3]:
+            data = struct.pack(self.__format__i, self.name.encode(), self.unknown)
             for j in range(0, len(self.orientations)):
-                data += struct.pack(self.__format__f, self.orientations[j],
-                        self.positions[j])
+                data += struct.pack(self.__format__f, self.orientations[j][1], self.orientations[j][2], -self.orientations[j][3], -self.orientations[j][0], self.positions[j][0], self.positions[j][1], self.positions[j][2])
             anmFile.write(data)
 
 
@@ -349,4 +351,79 @@ def applyANM(header, boneList):
 
 
 
-
+def exportANM(skelObj, output_filepath, input_filepath, OVERWRITE_FILE_VERSION, VERSION):
+    import bpy
+    
+    (import_header, import_bonelist) = importANM(input_filepath)
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='DESELECT')
+    skelObj.select = True
+    bpy.ops.object.mode_set(mode='EDIT')
+    
+    scene = bpy.context.scene
+    objBones = skelObj.data.bones
+    pb = skelObj.pose.bones
+    numBones = len(objBones)
+    
+    header = import_header
+    if OVERWRITE_FILE_VERSION:
+        header.version = VERSION
+        
+        #Apply changes to the header based on the new version here
+    
+    if header.version in [0,2,3]:
+        header.numBones = numBones
+        header.numFrames = scene.frame_end - scene.frame_start + 1
+        
+        boneList = []
+        parentOffset = {}
+        parentOffRot = {}
+        
+        for i, b in enumerate(objBones):
+            boneList.append(anmBone())
+            boneList[-1].name = b.name
+            
+            #most bones have a value of zero / bones without parent have a value of 2 / 
+            if b.parent != None:
+                boneList[-1].unknown = 0
+                
+                parentOffset[b.name] = mathutils.Vector(b.matrix_local.decompose()[0] - b.parent.matrix_local.decompose()[0]) * b.matrix_local
+                parentOffRot[b.name] = objBones[b.parent.name].matrix_local.to_quaternion().rotation_difference(b.matrix_local.to_quaternion())
+            else:
+                boneList[-1].unknown = 2
+                
+                parentOffset[b.name] = mathutils.Vector(b.head) * b.matrix_local
+                parentOffRot[b.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0])
+        
+        for f in range(scene.frame_start, scene.frame_end + 1):
+            bpy.context.scene.frame_set(f)
+            
+            for b in boneList:
+                n = b.name
+                objBone = objBones[n]
+                poseBone = pb[n]
+                bonePos = poseBone.location
+                
+                bonePos = bonePos + parentOffset[n]
+                boneOrient = parentOffRot[n] * poseBone.rotation_quaternion
+                
+                if objBone.parent != None:
+                    bonePos = bonePos * objBone.matrix_local.inverted()
+                    bonePos = bonePos * poseBone.parent.matrix
+                
+                bonePos[2] = -bonePos[2]
+                
+                b.add_frame(bonePos, boneOrient)
+        
+        anmFid = open(output_filepath, 'wb')
+        
+        header.toFile(anmFid)
+        
+        for b in boneList:
+            b.toFile(anmFid, import_header.version)
+        
+        anmFid.close()
+        
+    else:
+        raise ValueError("Version %d not supported!" % header.version)
