@@ -85,8 +85,10 @@ v0
     
     def toFile(self, sklFile):
         """Writes the header object to a raw binary file"""
-        data = struct.pack(self.__format__, self.fileType, self.version,
-                self.skeletonHash, self.numBones)
+        data = struct.pack(self.__format__i, self.fileType, self.version)
+        
+        if self.version in [1,2]:
+            data += struct.pack(self.__format__v12, self.skeletonHash, self.numBones)
         sklFile.write(data)
 
 
@@ -183,7 +185,7 @@ class sklBone():
     def toFile(self,sklFile):
         """Writes skeleton bone object to a binary file FID"""
 
-        data = struct.pack('<32sif', self.name, self.parent, self.scale)
+        data = struct.pack('<32sif', self.name.encode(), self.parent, self.scale)
         for j in range(3):
             for k in range(4):
                 data += struct.pack('<f', self.matrix[j][k]) 
@@ -400,3 +402,67 @@ def buildSKL(boneList, version):
     bpy.ops.object.mode_set(mode='OBJECT')
 
 
+def exportSKL(meshObj, skelObj, output_filepath, input_filepath):
+    import bpy
+    
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='DESELECT')
+    skelObj.select = True
+    
+    objBones = skelObj.data.bones
+    numBones = len(objBones)
+    bones = []
+    
+    for b in objBones:
+        bones.append(sklBone())
+        bones[-1].name = b.name
+        if b.parent != None:
+            for boneId, bone in enumerate(objBones):
+                if b.parent == bone:
+                    bones[-1].parent = boneId
+                    break
+        else:
+            bones[-1].parent = -1
+        bones[-1].scale = 0.1 #this value is always 0.1 ?
+        bones[-1].matrix = b.matrix_local
+        
+        for k in range(3):
+            bones[-1].matrix[k][2] = -bones[-1].matrix[k][2]
+        for k in range(4):
+            bones[-1].matrix[2][k] = -bones[-1].matrix[2][k]
+    
+    
+    (import_header, import_boneList, import_reorderedBoneList) = importSKL(input_filepath)
+    
+    header = import_header
+    
+    header.numBones = numBones
+    
+    if header.version in [1,2]:
+        numReorderedBones = len(meshObj.vertex_groups)
+        reorderedBoneList = []
+        
+        for g in meshObj.vertex_groups:
+            groupName = g.name
+            for boneIndex, bone in enumerate(objBones):
+                if bone == objBones[groupName]:
+                    index = boneIndex
+                    break
+            
+            reorderedBoneList.append(index)
+    else:
+        raise ValueError("Version %d not supported!" % VERSION)
+    
+    sklFid = open(output_filepath, 'wb')
+    
+    header.toFile(sklFid)
+    
+    for b in bones:
+        b.toFile(sklFid)
+    
+    sklFid.write(struct.pack('<1i', numReorderedBones))
+    
+    for b in reorderedBoneList:
+        sklFid.write(struct.pack('<1i', b))
+    
+    sklFid.close()

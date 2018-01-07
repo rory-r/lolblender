@@ -164,6 +164,36 @@ class EXPORT_OT_lol(bpy.types.Operator, ExportHelper):
 
         return {'FINISHED'}
         
+
+class EXPORT_OT_skl(bpy.types.Operator, ExportHelper):
+    '''Export a skeleton as a League of Legends .skl file'''
+
+    bl_idname="export.skl"
+    bl_label = "Export .skl"
+
+    OUTPUT_FILE = props.StringProperty(name='Export File', description='File to which skeleton will be exported')
+    INPUT_FILE = props.StringProperty(name='Import File', description='File to import certain metadata from')
+    MODEL_DIR = props.StringProperty()
+
+    filename_ext = '.skl'
+    def draw(self, context):
+        layout = self.layout
+        fileProps = context.space_data.params
+        self.MODEL_DIR = fileProps.directory
+
+        selectedFileExt = path.splitext(fileProps.filename)[-1].lower()
+        
+        self.OUTPUT_FILE = fileProps.filename
+
+        box = layout.box()
+        box.prop(self.properties, 'OUTPUT_FILE')
+        box.prop(self.properties, 'INPUT_FILE')
+        
+    def execute(self, context):
+        export_skl(MODEL_DIR=self.MODEL_DIR, OUTPUT_FILE=self.OUTPUT_FILE, INPUT_FILE=self.INPUT_FILE)
+
+        return {'FINISHED'}
+
 class IMPORT_OT_sco(bpy.types.Operator, ImportHelper):
     '''Import a League of Legends .sco file'''
 
@@ -332,6 +362,30 @@ def export_char(MODEL_DIR='',
     # bpy.ops.transform.resize(value=(1,1,-1), constraint_axis=(False, False,
     #         True), constraint_orientation='GLOBAL')
 
+def export_skl(MODEL_DIR='', OUTPUT_FILE='untitled.skl', INPUT_FILE=''):
+    import bpy
+    
+    #If no mesh object was supplied, try the active selection
+    if bpy.context.object.type =='MESH':
+        meshObj = bpy.context.object
+        skelObj = meshObj.modifiers['Armature'].object
+    #If the selected object wasn't a mesh, try finding one named 'lolMesh'
+    else:
+        try:
+            meshObj = bpy.data.objects['lolMesh']
+            skelObj = meshObj.modifiers['Armature'].object
+        except KeyError:
+            errStr = '''
+            No mesh selected, and no mesh
+            named 'lolMesh'.  Nothing to export.'''
+            print(errStr)
+            raise KeyError
+    
+    input_filepath = path.join(MODEL_DIR, INPUT_FILE)
+    output_filepath = path.join(MODEL_DIR, OUTPUT_FILE)
+    
+    lolSkeleton.exportSKL(meshObj, skelObj, output_filepath, input_filepath)
+
 def import_sco(filepath):
     lolMesh.buildSCO(filepath)
 
@@ -357,6 +411,7 @@ def menu_func_import(self, context):
 
 def menu_func_export(self, context):
     self.layout.operator(EXPORT_OT_lol.bl_idname, text="League of Legends (.skn)")
+    self.layout.operator(EXPORT_OT_skl.bl_idname, text="League of Legends Skeleton (.skl)")
     self.layout.operator(EXPORT_OT_lolanm.bl_idname, text="League of Legends Animation(.anm)")
     self.layout.operator(EXPORT_OT_sco.bl_idname, text="League of Legends Particle (.sco)")
 
@@ -367,6 +422,7 @@ def register():
     bpy.types.INFO_MT_file_import.append(menu_func_import)
 
     bpy.utils.register_class(EXPORT_OT_lol)
+    bpy.utils.register_class(EXPORT_OT_skl)
     bpy.utils.register_class(EXPORT_OT_lolanm)
     bpy.utils.register_class(EXPORT_OT_sco)
     bpy.types.INFO_MT_file_export.append(menu_func_export)
