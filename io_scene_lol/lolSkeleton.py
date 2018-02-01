@@ -451,7 +451,7 @@ def exportSKL(meshObj, skelObj, output_filepath, input_filepath):
             
             reorderedBoneList.append(index)
     else:
-        raise ValueError("Version %d not supported!" % VERSION)
+        raise ValueError("Version %d not supported!" % header.version)
     
     sklFid = open(output_filepath, 'wb')
     
