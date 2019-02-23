@@ -88,22 +88,22 @@ class sknMaterial():
 
 
 class sknMetaData():
-    def __init__(self, part1=0, numIndices=None, numVertices=None, metaDataBlock=None):
+    def __init__(self, part1=0, numIndices=None, numVertices=None, vertexBlockSize=52, containsVertexColor=0, boundingBoxMin=None, boundingBoxMax=None, boundingSpherePos=None, boundingSphereRadius=None):
         # # UserDict.__init__(self)
         self.__format__v12 = '<2i'
-        self.__format__v4 = '<3i48b'
+        self.__format__v4 = '<3iIi10f'
         self.__size__v12 = struct.calcsize(self.__format__v12)
         self.__size__v4 = struct.calcsize(self.__format__v4)
         
         self.part1 = part1
         self.numIndices = numIndices
         self.numVertices = numVertices
-        if metaDataBlock is not None:
-            self.metaDataBlock = metaDataBlock
-        else:
-            self.metaDataBlock = [0 for x in range(0,48)]
-            self.metaDataBlock[0] = 52
-            self.metaDataBlock[47] = 67
+        self.vertexBlockSize = vertexBlockSize
+        self.containsVertexColor = containsVertexColor
+        self.boundingBoxMin = boundingBoxMin
+        self.boundingBoxMax = boundingBoxMax
+        self.boundingSpherePos = boundingSpherePos
+        self.boundingSphereRadius = boundingSphereRadius
 
     def fromFile(self, sknFid, version):
         if version in [1,2]:
@@ -114,7 +114,12 @@ class sknMetaData():
             buf = sknFid.read(self.__size__v4)
             fields = struct.unpack(self.__format__v4, buf)
             (self.part1, self.numIndices, self.numVertices) = fields[0:3]
-            self.metaDataBlock = fields[3:51]
+            self.vertexBlockSize = fields[3]
+            self.containsVertexColor = fields[4]
+            self.boundingBoxMin = fields[5:8]
+            self.boundingBoxMax = fields[8:11]
+            self.boundingSpherePos = fields[11:14]
+            self.boundingSphereRadius = fields[14]
         else:
             raise ValueError("Version %s not supported" % version)
         self.version = version
@@ -127,7 +132,12 @@ class sknMetaData():
             sknFid.write(buf)
         elif version in [4]:
             buf = struct.pack(self.__format__v4, self.part1,
-                    self.numIndices, self.numVertices, *self.metaDataBlock[0:48])
+                    self.numIndices, self.numVertices, self.vertexBlockSize,
+                    self.containsVertexColor,
+                    self.boundingBoxMin[0], self.boundingBoxMin[1], self.boundingBoxMin[2],
+                    self.boundingBoxMax[0], self.boundingBoxMax[1], self.boundingBoxMax[2],
+                    self.boundingSpherePos[0], self.boundingSpherePos[1], self.boundingSpherePos[2],
+                    self.boundingSphereRadius)
             sknFid.write(buf)
         else:
             raise ValueError("Version %s not supported" % version)
@@ -161,8 +171,9 @@ class sknVertex():
         self.weights = [0.0, 0.0, 0.0, 0.0]
         self.normal = [0.0, 0.0, 0.0]
         self.texcoords = [0.0, 0.0]
+        self.vertexColor = [0.0, 0.0, 0.0, 0.0]
 
-    def fromFile(self, sknFid):
+    def fromFile(self, sknFid, containsVertexColor):
         buf = sknFid.read(self.__size__)
         fields = struct.unpack(self.__format__, buf)
 
@@ -171,8 +182,14 @@ class sknVertex():
         self.weights = fields[7:11]
         self.normal = fields[11:14]
         self.texcoords = fields[14:16]
+        
+        if(containsVertexColor > 0):
+            buf = sknFid.read(struct.calcsize('<4B'))
+            fields = struct.unpack('<4B', buf)
+            for i in range(0, 4):
+                self.vertexColor[i] = fields[i] / 255.0
 
-    def toFile(self, sknFid):
+    def toFile(self, sknFid, containsVertexColor):
         buf = struct.pack(self.__format__,
                 self.position[0], self.position[1], self.position[2],
                 self.boneIndex[0],self.boneIndex[1],self.boneIndex[2],self.boneIndex[3],
@@ -180,6 +197,9 @@ class sknVertex():
                 self.normal[0],self.normal[1],self.normal[2],
                 self.texcoords[0],self.texcoords[1])
         sknFid.write(buf)
+        if containsVertexColor:
+            buf = struct.pack('<4B', int(self.vertexColor[0] * 255.0), int(self.vertexColor[1] * 255.0), int(self.vertexColor[2] * 255.0), int(self.vertexColor[3] * 255.0))
+            sknFid.write(buf)
 
 class scoObject():
 
@@ -220,7 +240,7 @@ def importSKN(filepath):
 
     for k in range(metaData.numVertices):
         vertices.append(sknVertex())
-        vertices[-1].fromFile(sknFid)
+        vertices[-1].fromFile(sknFid, metaData.containsVertexColor)
 
     # exclusive to version two+.
     if header.version >= 2:  # stuck in header b/c nowhere else for it
@@ -297,6 +317,19 @@ def buildMesh(filepath):
     scene.objects.link(obj)
 
 
+    if metaData.containsVertexColor:
+        #Create vertex color layer
+        obj.data.vertex_colors.new("lolVertexColor")
+        vertColorLayer = obj.data.vertex_colors[-1]
+        for k, loop in enumerate(obj.data.loops):
+            vertIndex = loop.vertex_index
+            vertColorLayer.data[k].color = vertices[vertIndex].vertexColor[0:3]
+        obj.data.vertex_colors.new("lolVertexColorAlpha")
+        vertColorAlphaLayer = obj.data.vertex_colors[-1]
+        for k, loop in enumerate(obj.data.loops):
+            alphaValue = vertices[loop.vertex_index].vertexColor[3]
+            vertColorAlphaLayer.data[k].color = (alphaValue, 0.0, 0.0)
+    
     #Create UV texture coords
     texList = []
     uvtexName = 'lolUVtex'
@@ -462,25 +495,43 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     
     numIndices = len(indices)
     numVertices = len(meshObj.data.vertices)
-
+    
+    
+    containsVertexColor = ('lolVertexColor' in meshObj.data.vertex_colors) and ('lolVertexColorAlpha' in meshObj.data.vertex_colors)
+    
+    if containsVertexColor:
+        vertexBlockSize = 56
+    else:
+        vertexBlockSize = 52
+    
+    boundingBoxMin = meshObj.bound_box[0][0:3]
+    boundingBoxMax = meshObj.bound_box[6][0:3]
+    
+    #approximate bounding sphere
+    sphereCenter = ((boundingBoxMax[0] + boundingBoxMin[0]) * 0.5, (boundingBoxMax[1] + boundingBoxMin[1]) * 0.5, (boundingBoxMax[2] + boundingBoxMin[2]) * 0.5)
+    
+    maxDistance = 0.0
+    for i in range(3):
+        distance = sphereCenter[i] - boundingBoxMin[i]
+        if (distance > maxDistance):
+            maxDistance = distance
+    
+    boundingSpherePos = sphereCenter
+    boundingSphereRadius = maxDistance
+    
     #Write header block
     if BASE_ON_IMPORT:
         (import_header, import_mats, import_meta_data, import_indices,
         import_vertices) = importSKN(input_filepath)
         header = import_header
         VERSION = header.version
-        
-        meta_data = import_meta_data
-        
-        meta_data.numIndices = numIndices
-        meta_data.numVertices = numVertices
     else:
         header = sknHeader()
         header.magic = 1122867
         header.version = VERSION
         header.numObjects = 1
 
-        meta_data = sknMetaData(0, numIndices, numVertices)
+    meta_data = sknMetaData(0, numIndices, numVertices, vertexBlockSize, containsVertexColor, boundingBoxMin, boundingBoxMax, boundingSpherePos, boundingSphereRadius)
 
     #create output file 
     sknFid = open(output_filepath, 'wb')
@@ -500,6 +551,10 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
         buf = struct.pack('<h', idx)
         sknFid.write(buf)
 
+    if containsVertexColor:
+        vertexColorLayer = meshObj.data.vertex_colors['lolVertexColor']
+        vertexColorAlphaLayer = meshObj.data.vertex_colors['lolVertexColorAlpha']
+    
     #Write vertices
     sknVtx = sknVertex()
     for idx, vtx in enumerate(meshObj.data.vertices):
@@ -554,8 +609,16 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
             sknVtx.texcoords[0] = vtxUvs[idx][0]
             sknVtx.texcoords[1] = vtxUvs[idx][1]
 
+        if containsVertexColor:
+            vtxColor = vertexColorLayer.data[vertIndex].color[0:3]
+            vtxColorAlpha = vertexColorAlphaLayer.data[vertIndex].color[:1]
+			#append alpha value from different layer
+            vtxColor = vtxColor + vtxColorAlpha
+            
+            sknVtx.vertexColor = vtxColor
+
         #writeout the vertex
-        sknVtx.toFile(sknFid)
+        sknVtx.toFile(sknFid, containsVertexColor)
     
     if VERSION >= 2:  # some extra ints in v2+. not sure what they do, non-0 in v4?
         if header.endTab is None or len(header.endTab) < 3:
