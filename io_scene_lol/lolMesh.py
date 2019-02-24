@@ -432,11 +432,16 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     bpy.ops.object.select_all(action='DESELECT')
     meshObj.select = True
 
-    numFaces = len(meshObj.data.loops) // 3
     
-    #Build vertex index list and dictionary of vertex-uv pairs
+    containsVertexColor = ('lolVertexColor' in meshObj.data.vertex_colors) and ('lolVertexColorAlpha' in meshObj.data.vertex_colors)
+    
+    #Build vertex data lists and dictionary of vertex-uv pairs
+    vertexUvs = {}
+    vertices = []
+    vertexNormals = []
+    vertexWeights = []
+    vtxColors = []
     indices = []
-    vtxUvs = {}
     
     #Read materials
     matHeaders = []
@@ -445,59 +450,63 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     
     bm = bmesh.from_edit_mesh(meshObj.data)
     bm.verts.ensure_lookup_table()
+    bm.verts.index_update()
+    bm.faces.index_update()
+    for f in bm.faces:
+        for l in f.loops:
+            l.index = -1
+    
+    #bmesh data layers
+    weightLayer = bm.verts.layers.deform.active
+    uvLayer = bm.loops.layers.uv['lolUVtex']
+    if containsVertexColor:
+        vertexColorLayer = bm.loops.layers.color['lolVertexColor']
+        vertexColorAlphaLayer = bm.loops.layers.color['lolVertexColorAlpha']
     
     for m, matSlot in enumerate(meshObj.material_slots):
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.context.active_object.active_material_index = m
         bpy.ops.object.material_slot_select()
         
-        startVert = 2147483647 #highest possible int-Value
-        startIndex = len(indices)
+        matStartVert = len(vertices)
+        matStartIndex = len(indices)
         
-        vertCount = 0
-        for vert in bm.verts:
-            if vert.select == True:
-                vertCount += 1
-                if vert.index < startVert:
-                    startVert = vert.index
-        
-        uvLayer = bm.loops.layers.uv['lolUVtex']
         for f in bm.faces:
             if f.select == True:
                 #check if the face is a triangle
                 if (len(f.verts) != 3):
                     raise ValueError("Found a face which is not a triangle. Every face has to be a triangle!")
                 
-                for vert in f.verts:
-                    vertIndex = vert.index
-                    vertLoops = vert.link_loops
-                    vertLoopCount = len(vertLoops)
-                    
-                    indices.append(vertIndex)
-                    
-                    #ensure that every loop of one vertex has the same uv-Coords because the file format does only support one uv-Coord per Vertex
-                    uv = vertLoops[0][uvLayer].uv
-                    for i in range(1, vertLoopCount, 1):
-                        loopUV = vertLoops[i][uvLayer].uv
-                        #if loopUV != uv:
-                        #    raise ValueError("The LoL Mesh-Format is not capable of seams in the UVs! Only one UV-Coordinate per Vertex possible!")
-                    
-                    vtxUvs[vertIndex] = [uv[0], 1-uv[1]]
+                for loop in f.loops:
+                    #every vertex should have one uv coordinate -> every loop with unique uv or vert coordinate exports as unique vertex
+                    loopId = loop[uvLayer].uv[:] + loop.vert.co[:]
+                    if loopId not in vertexUvs:
+                        loop.index = len(vertices)
+                        vertices.append(loop.vert.co[:])
+                        vertexNormals.append(loop.vert.normal[:])
+                        vertexWeights.append(loop.vert[weightLayer].items())
+                        vertexUvs[loopId] = loop.index
+                        if containsVertexColor:
+                            vtxColor = loop[vertexColorLayer][0:3]
+                            vtxColorAlpha = loop[vertexColorAlphaLayer][:1]
+                            #append alpha value from different layer
+                            vtxColor = vtxColor + vtxColorAlpha
+                            vtxColors.append(vtxColor)
+                        
+                    indices.append(vertexUvs[loopId])
         
-        indexCount = len(indices) - startIndex
-        matHeaders.append(sknMaterial(matSlot.material.name, startVert, vertCount, startIndex, indexCount))
+        indexCount = len(indices) - matStartIndex
+        vertCount = len(vertices) - matStartVert
+        matHeaders.append(sknMaterial(matSlot.material.name, matStartVert, vertCount, matStartIndex, indexCount))
     
     bm.free()
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.object.mode_set(mode='OBJECT')
     
+    vertexUvs = list(vertexUvs.keys())
     numMats = len(meshObj.material_slots)
-    
     numIndices = len(indices)
-    numVertices = len(meshObj.data.vertices)
-    
-    
-    containsVertexColor = ('lolVertexColor' in meshObj.data.vertex_colors) and ('lolVertexColorAlpha' in meshObj.data.vertex_colors)
+    numVertices = len(vertices)
     
     if containsVertexColor:
         vertexBlockSize = 56
@@ -550,73 +559,58 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     for idx in indices:
         buf = struct.pack('<h', idx)
         sknFid.write(buf)
-
-    if containsVertexColor:
-        vertexColorLayer = meshObj.data.vertex_colors['lolVertexColor']
-        vertexColorAlphaLayer = meshObj.data.vertex_colors['lolVertexColorAlpha']
     
     #Write vertices
     sknVtx = sknVertex()
-    for idx, vtx in enumerate(meshObj.data.vertices):
+    for idx, vtx in enumerate(vertices):
         sknVtx.reset()
         #get position
-        sknVtx.position[0] = vtx.co[0]
-        sknVtx.position[1] = vtx.co[1]
-        sknVtx.position[2] = vtx.co[2]
+        sknVtx.position[0] = vtx[0]
+        sknVtx.position[1] = vtx[1]
+        sknVtx.position[2] = vtx[2]
         
-        sknVtx.normal[0] = vtx.normal[0]
-        sknVtx.normal[1] = vtx.normal[1]
-        sknVtx.normal[2] = vtx.normal[2]
+        sknVtx.normal[0] = vertexNormals[idx][0]
+        sknVtx.normal[1] = vertexNormals[idx][1]
+        sknVtx.normal[2] = vertexNormals[idx][2]
 
         #get weights
         #The SKN format only allows 4 bone weights,
         #so we'll choose the largest 4 & renormalize
         #if needed
-
-        if len(vtx.groups) > 4:
-            tmpList = []
-            #Get all the bone/weight pairs
-            for group in vtx.groups:
-                tmpList.append((group.group, group.weight))
-
+        vtxWeights = vertexWeights[idx]
+        if len(vtxWeights) > 4:
             #Sort by weight in decending order
-            tmpList = sorted(tmpList, key=lambda t: t[1], reverse=True)
+            vtxWeights = sorted(vtxWeights, key=lambda t: t[1], reverse=True)
             
             #Find sum of four largets weights.
             tmpSum = 0
             for k in range(4):
-                tmpSum += tmpList[k][1]
+                tmpSum += vtxWeights[k][1]
             
             #Spread remaining weight proportionally across bones
             remWeight = 1-tmpSum
             for k in range(4):
-                sknVtx.boneIndex[k] = tmpList[k][0]
-                sknVtx.weights[k] = tmpList[k][1] + tmpList[k][1]*remWeight/tmpSum
+                sknVtx.boneIndex[k] = vtxWeights[k][0]
+                sknVtx.weights[k] = vtxWeights[k][1] + vtxWeights[k][1]*remWeight/tmpSum
 
         else:
             #If we have 4 or fewer bone/weight associations,
             #we have to ensure that the sum of the weights is 1
             weightSum = 0.0
-            for group in vtx.groups:
-                weightSum += group.weight
+            for group, weight in vtxWeights:
+                weightSum += weight
             
-            for vtxIdx, group in enumerate(vtx.groups):
-                sknVtx.boneIndex[vtxIdx] = group.group
-                sknVtx.weights[vtxIdx] = group.weight / weightSum
-
+            for vtxIdx, (group, weight) in enumerate(vtxWeights):
+                sknVtx.boneIndex[vtxIdx] = group
+                sknVtx.weights[vtxIdx] = weight / weightSum
+        
         #Get UV's
-        if idx in vtxUvs:
-            sknVtx.texcoords[0] = vtxUvs[idx][0]
-            sknVtx.texcoords[1] = vtxUvs[idx][1]
-
+        sknVtx.texcoords[0] = vertexUvs[idx][0]
+        sknVtx.texcoords[1] = 1 - vertexUvs[idx][1]   #flip y-coordinates
+        
         if containsVertexColor:
-            vtxColor = vertexColorLayer.data[vertIndex].color[0:3]
-            vtxColorAlpha = vertexColorAlphaLayer.data[vertIndex].color[:1]
-			#append alpha value from different layer
-            vtxColor = vtxColor + vtxColorAlpha
-            
-            sknVtx.vertexColor = vtxColor
-
+            sknVtx.vertexColor = vtxColors[idx]
+        
         #writeout the vertex
         sknVtx.toFile(sknFid, containsVertexColor)
     
