@@ -54,6 +54,8 @@ class sknHeader():
                 self.numObjects)
 
         sknFid.write(buf)
+        
+        sknFid.write(struct.pack('<i', self.numMaterials))
 
     def __str__(self):
         return "{'__format__': %s, '__size__': %d, 'magic': %d, 'version': %d, 'numObjects':%d}"\
@@ -96,7 +98,7 @@ class sknMaterial():
             self.numVertices = fields[1]
 
     def toFile(self, sknFid):
-        buf = struct.pack(self.__format__, self.name.encode(),
+        buf = struct.pack(self.__format__v124, self.name.encode(),
                 self.startVertex, self.numVertices,
                 self.startIndex, self.numIndices)
         sknFid.write(buf)
@@ -571,9 +573,9 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     sknFid = open(output_filepath, 'wb')
     
     #write header
+    header.numMaterials = numMats
     header.toFile(sknFid)
     if header.numObjects > 0:  # if materials exist
-        sknFid.write(struct.pack('<1i', numMats))
         #We are writing a materials block
         for mat in matHeaders:
             mat.toFile(sknFid)
