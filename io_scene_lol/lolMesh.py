@@ -29,14 +29,25 @@ class sknHeader():
         self.magic = 0
         self.version = 0
         self.numObjects = 0
+        self.numMaterials = 0
         self.endTab = [0,0,0]
 
     def fromFile(self, sknFid):
         buf = sknFid.read(self.__size__)
         (self.magic, self.version, 
                 self.numObjects) = struct.unpack(self.__format__, buf)
+        
+        if (self.version in [1, 2, 4]):
+            buf = sknFid.read(struct.calcsize('<i'))
+            self.numMaterials = struct.unpack('<i', buf)[0]
+        elif (self.version == 0):
+            self.numMaterials = 1
+        else:
+            raise ValueError('Unknown version: ', self.version)
+        
         print("SKN version: %s" % self.version)
         print("numObjects: %s" % self.numObjects)
+        print("numMaterials: %s" % self.numMaterials)
 
     def toFile(self, sknFid):
         buf = struct.pack(self.__format__, self.magic, self.version,
@@ -54,8 +65,10 @@ class sknMaterial():
     def __init__(self, name=None, startVertex=None,
             numVertices=None, startIndex=None, numIndices=None):
         # # UserDict.__init__(self)
-        self.__format__ = '<64s4i'
-        self.__size__ = struct.calcsize(self.__format__)
+        self.__format__v124 = '<64s4i'
+        self.__size__v124 = struct.calcsize(self.__format__v124)
+        self.__format__v0 = '<2I'
+        self.__size__v0 = struct.calcsize(self.__format__v0)
         
         self.name = name
         self.startVertex = startVertex
@@ -64,14 +77,23 @@ class sknMaterial():
         self.numIndices = numIndices
 
 
-    def fromFile(self, sknFid):
-        buf = sknFid.read(self.__size__)
-        fields = struct.unpack(self.__format__, buf)
-
-        #self.name = bytes.decode(fields[1])
-        self.name = bytes.decode(fields[0]).rstrip('\0')
-        (self.startVertex, self.numVertices) = fields[1:3]
-        (self.startIndex, self.numIndices) = fields[3:5]
+    def fromFile(self, sknFid, version):
+        if (version in [1,2,4]):
+            buf = sknFid.read(self.__size__v124)
+            fields = struct.unpack(self.__format__v124, buf)
+            
+            self.name = bytes.decode(fields[0]).rstrip('\0')
+            (self.startVertex, self.numVertices) = fields[1:3]
+            (self.startIndex, self.numIndices) = fields[3:5]
+        elif (version == 0):
+            buf = sknFid.read(self.__size__v0)
+            fields = struct.unpack(self.__format__v0, buf)
+            
+            self.name = 'lolMaterial'
+            self.startVertex = 0
+            self.startIndex = 0
+            self.numIndices = fields[0]
+            self.numVertices = fields[1]
 
     def toFile(self, sknFid):
         buf = struct.pack(self.__format__, self.name.encode(),
@@ -120,6 +142,8 @@ class sknMetaData():
             self.boundingBoxMax = fields[8:11]
             self.boundingSpherePos = fields[11:14]
             self.boundingSphereRadius = fields[14]
+        elif version in [0]:
+            pass
         else:
             raise ValueError("Version %s not supported" % version)
         self.version = version
@@ -222,15 +246,16 @@ def importSKN(filepath):
     header.fromFile(sknFid)
 
     materials = []
-    buf = sknFid.read(struct.calcsize('<i'))
-    numMaterials = struct.unpack('<i', buf)[0]
-    print ("number of Materials: %s" % numMaterials)
-    for k in range(numMaterials):
+    
+    for k in range(header.numMaterials):
         materials.append(sknMaterial())
-        materials[-1].fromFile(sknFid)
+        materials[-1].fromFile(sknFid, header.version)
 
     metaData = sknMetaData()
     metaData.fromFile(sknFid, header.version)
+    if (header.version == 0):
+        metaData.numIndices = materials[0].numIndices
+        metaData.numVertices = materials[0].numVertices
 
     indices = []
     vertices = []
