@@ -282,7 +282,7 @@ def applyANM(header, boneList):
             parentOffRot[b.name] = pb[b.parent.name].matrix.to_quaternion().rotation_difference(pb[b.name].matrix.to_quaternion())
         else:
             parentOffset[b.name] = mathutils.Vector(poseBone.head) * poseBone.matrix
-            parentOffRot[b.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0])
+            parentOffRot[b.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0]).rotation_difference(pb[b.name].matrix.to_quaternion())
         
         rot = b.matrix_local.decompose()[1]
 
@@ -320,6 +320,7 @@ def applyANM(header, boneList):
                 poseBone = pb[n]
                 bone = bs[n]
                 bonePos = bonePositions[n]
+                
                 if poseBone.parent:
                     # armatureBone.head = poseBone.parent.tail
                     parentName = poseBone.parent.name
@@ -328,9 +329,11 @@ def applyANM(header, boneList):
                     # boneOrientations[n] = parOrientation * b.orientations[f]
                     # bonePositions[n] = bonePositions[parentName] + parOrientation * b.positions[f]
                     # armatureBone.head = armatureBone.parent.tail
+                    
                     bonePos = bonePos * pb[parentName].matrix.inverted()
                     bonePos = bonePos * bs[n].matrix_local
                 else:
+                    bonePos = bonePos * bs[n].matrix_local
                     parOrientation = mathutils.Quaternion([1,0,0,0])
                 
                 poseBone.rotation_quaternion = parentOffRot[n].inverted() * boneOrientations[n]
