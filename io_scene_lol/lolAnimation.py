@@ -284,6 +284,7 @@ def applyANM(header, boneList):
             parentOffRot[editBone.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0]).rotation_difference(editBone.matrix.to_quaternion())
 
     if header.version in [1, 3, 4, 5]:
+        scene.render.fps = header.playbackFPS
         scene.frame_end = header.numFrames - 1
         scene.frame_start = 0
         for f in range(header.numFrames):
