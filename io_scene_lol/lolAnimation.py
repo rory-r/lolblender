@@ -27,6 +27,7 @@
 # <pep8 compliant>
 import struct
 import mathutils
+from math import sqrt
 
 class anmHeader():
     """LoL animation header format:
@@ -34,7 +35,8 @@ class anmHeader():
     version             uint        4       Version number.
 
     v1
-        magic               char[12]     12       "magic"
+        fileDataSize-12     uint        4
+        unknown             uint[2]     8
         numBones            uint        4
         offset?             uint        4
         numFrames           uint        4
@@ -56,22 +58,34 @@ class anmHeader():
         playbackFPS         uint        4       FPS of playback
 
     v4
-        magic               uint        4       "magic" number
+        fileDataSize-12     uint        4
         unknown             float[3]    12
         numBones            uint        4       Number of bones
         numFrames           uint        4       Number of frames
         timePerFrame        float       4       1/fps
-        offsets             uint[3]     12      offsets
+        unknown             uint[3]     12      padding ?
         positionOffset      uint        4
         orientationOffset   uint        4
         indexOffset         uint        4
-        offsets2            uint[3]     12      ?
+        unknown             uint[3]     12      padding ?
 
+    v5
+        fileDataSize-12     uint        4
+        unknown             uint[3]     12      always zero?
+        numBones            uint        4       Number of bones
+        numFrames           uint        4       Number of frames
+        timePerFrame        float       4       1/fps
+        hashesOffset        uint        4
+        unknown             uint[2]     8       always zero?
+        positionOffset      uint        4
+        orientationOffset   uint        4
+        indexOffset         uint        4
+        unknown             uint[3]     12      always zero?
 
-    
     total size v0,2-3                   28 bytes
     total size v1                       68+ bytes
     total size v4                       76 bytes
+    total size v5                       76 bytes
 
     """
 
@@ -84,9 +98,11 @@ class anmHeader():
         self.__size__v023 = struct.calcsize(self.__format__v023)
         self.__format__v4 = '<i3f2if9i'  # part for version 4
         self.__size__v4 = struct.calcsize(self.__format__v4)
+        self.__format__v5 = '<i3f2if9i'
+        self.__size__v5 = struct.calcsize(self.__format__v5)
         self.id = None
         self.version = None
-        self.magic = None
+        self.fileSize = None
         self.numBones = None
         self.numFrames = None
         self.playbackFPS = None
@@ -100,37 +116,50 @@ class anmHeader():
         print("ANM Version: %d" % self.version)
         if self.version in [0, 2, 3]:  # versions 0-3
             rest = struct.unpack(self.__format__v023, anmFile.read(self.__size__v023))
-            (self.magic, self.numBones, self.numFrames, self.playbackFPS) = rest
-            print("anmMagic: %s" % self.magic)
+            (self.fileSize, self.numBones, self.numFrames, self.playbackFPS) = rest
+            self.fileSize += 12
+            
             print("anmNumBones: %s" % self.numBones)
             print("anmnumFrames: %s" % self.numFrames)
             print("anmplaybackFPS: %s" % self.playbackFPS)
         elif self.version == 1:  # version 1
             rest = struct.unpack(self.__format__v1, anmFile.read(self.__size__v1))
-            (self.magic, self.numBones, self.offset, self.numFrames, 
+            (self.fileSize, self.numBones, self.offset, self.numFrames, 
                     self.unknown, self.playbackFPS) = rest[0:6]
+            fileSize += 12
             if (rest[6] != 2 or rest[7] != 10 or rest[8] != 2 or rest[9] != 10 or 
                     rest[10] != .01 or rest[11] != 0.2):
                 print("ANM file headers unexpected values: ")
                 print(rest[6:12])
-            raise ValueError("Version %s ANM not supported" % self.version)
         elif self.version == 4:  # version 4
             rest = struct.unpack(self.__format__v4, anmFile.read(self.__size__v4))
-            self.magic = rest[0]
+            self.fileSize = rest[0] + 12
             self.unknown = rest[1:4]
             self.numBones = rest[4]
             self.numFrames = rest[5]
-            timePerFrame = rest[6]
-            self.playbackFPS = round(1.0 / timePerFrame)
-            self.offsets = rest[7:10]
+            self.timePerFrame = rest[6]
+            self.playbackFPS = round(1.0 / self.timePerFrame)
+            self.unknown2 = rest[7:10]
             self.positionOffset = rest[10]
             self.orientationOffset = rest[11]
             self.indexOffset = rest[12]
-            self.offsets2 = rest[13:16]
+            self.unknown3 = rest[13:16]
+        elif self.version == 5:  # version 5
+            rest = struct.unpack(self.__format__v5, anmFile.read(self.__size__v5))
+            self.fileSize = rest[0] + 12
+            self.unknown = rest[1:4]
+            self.numBones = rest[4]
+            self.numFrames = rest[5]
+            self.timePerFrame = rest[6]
+            self.playbackFPS = round(1.0 / self.timePerFrame)
+            self.hashesOffset = rest[7]
+            self.unknown2 = rest[8:10]
+            self.positionOffset = rest[10]
+            self.orientationOffset = rest[11]
+            self.indexOffset = rest[12]
+            self.unknown3 = rest[13:16]
         else:
             raise ValueError("Version %s ANM not supported" % self.version)
-        print("Version: %s" % self.version)
-        print("magic: %s" % self.magic)
     
     def toFile(self, anmFile):
         """Writes the header object to a raw binary file"""
@@ -156,23 +185,43 @@ class anmBone():
 
     v1,4
     Animation information is separated by frame for version 4 and probably v1
+
+    v5
+    positions[]:
+        float[3]    12
+    
+    rotationQuaternions[]:
+        byte[6]     6
+    
+    hashes?     int[?]
+    
+    frame[numberOfFrames]:
+        bones[numberOfBones]:
+            positionIndex    ushort     2
+            sizeIndex?       ushort     2
+            quatIndex        ushort     2
+    
+    total               
     """
     def __init__(self):
-        self.__format__i = '<32si'  # initial
-        self.__size__i = struct.calcsize(self.__format__i)
+        self.__format__iv023 = '<32si'  # initial
+        self.__size__iv023 = struct.calcsize(self.__format__iv023)
+        self.__format__iv5 = '<I'
+        self.__size__iv5 = struct.calcsize(self.__format__iv5)
         self.__format__f = '<7f'  # per frame
         self.__size__f = struct.calcsize(self.__format__f)
         self.name = None
         self.parent = None
         self.orientations = []
         self.positions = []
+        self.scales = []
 
 
     def metaDataFromFile(self, anmFile, version):
         """Reads animation bone meta-data from a binary file fid"""
         if version in [0,2,3]:
-            fields = struct.unpack(self.__format__i, 
-                    anmFile.read(self.__size__i))
+            fields = struct.unpack(self.__format__iv023, 
+                    anmFile.read(self.__size__iv023))
             # for e in ['utf-8', 'utf-16', 'ascii', 'latin-1', 'iso-8859-1',
             #         'gb2312', 'Windows-1251', 'windows-1252']:
             #     try:
@@ -203,11 +252,12 @@ class anmBone():
         else:
             raise ValueError("Unhandled Bone version number", version)
 
-    def add_frame(self, position, orientation):
+    def add_frame(self, position, orientation, scale = mathutils.Vector((1.0, 1.0, 1.0))):
         """Adds a position Vector and orientation Quaternion to this bone's
         lists, representing a new frame."""
         self.positions.append(position)
         self.orientations.append(orientation)
+        self.scales.append(scale)
 
     def get_frame(self, frame_number):
         """Returns the position Vector and orientation Quaternion of a bone
@@ -222,6 +272,34 @@ class anmBone():
                 data += struct.pack(self.__format__f, self.orientations[j][1], self.orientations[j][2], -self.orientations[j][3], -self.orientations[j][0], self.positions[j][0], self.positions[j][1], self.positions[j][2])
             anmFile.write(data)
 
+def decodeQuaternion(encodedQuat):
+    encodedQuat = struct.unpack('<3H', encodedQuat)
+    encodedQuat = encodedQuat[0] | encodedQuat[1] << 16 | encodedQuat[2] << 32
+    q1 = int((encodedQuat >> 0) & 0x7FFF)
+    q2 = int((encodedQuat >> 15) & 0x7FFF)
+    q3 = int((encodedQuat >> 30) & 0x7FFF)
+    flag = int(encodedQuat >> 45)
+    
+    sqrt2 = sqrt(2.0)
+    q1 = sqrt2 * (q1 - 16384) / 32768.0
+    q2 = sqrt2 * (q2 - 16384) / 32768.0
+    q3 = sqrt2 * (q3 - 16384) / 32768.0
+    q0 = sqrt(1.0 - q1*q1 - q2*q2 - q3*q3)
+    
+    if flag is 0:
+        encodedQuat = mathutils.Quaternion((q3, q0, q1, q2))
+    elif flag is 1:
+        encodedQuat = mathutils.Quaternion((q3, q1, q0, q2))
+    elif flag is 2:
+        #encodedQuat = mathutils.Quaternion((q3, q1, q2, q0))
+        encodedQuat = mathutils.Quaternion((-q3, -q1, -q2, -q0))
+    elif flag is 3:
+        encodedQuat = mathutils.Quaternion((q0, q1, q2, q3))
+    else:
+        print("Quaternion flag invalid: %d" % flag)
+    
+    return encodedQuat
+    
 
 def importANM(filepath):
     header = anmHeader()
@@ -232,7 +310,7 @@ def importANM(filepath):
 
     #Read the file header to get # of bones
     header.fromFile(anmFid)
-    if header.version in [0, 1, 2, 3]:
+    if header.version in [1, 3]:
         #Read in the bones
         for i in range(header.numBones):
             boneList.append(anmBone())
@@ -246,6 +324,33 @@ def importANM(filepath):
 
     elif header.version == 4:
         print("not supported yet")
+    elif header.version == 5:
+        positions = []
+        numPositions = (header.orientationOffset - header.positionOffset) // 12
+        for i in range(numPositions):
+            pos = struct.unpack('<3f', anmFid.read(12))
+            pos = mathutils.Vector(pos)
+            positions.append(pos)
+        
+        orientations = []
+        numOrientations = (header.hashesOffset - header.orientationOffset) // 6
+        for i in range(numOrientations):
+            quat = anmFid.read(6)
+            quat = decodeQuaternion(quat)
+            orientations.append(quat)
+        
+        boneList = [anmBone() for i in range(header.numBones)]
+        
+        numHashes = (header.indexOffset - header.hashesOffset) // 4
+        for i in range(numHashes):
+            hash = struct.unpack('<i', anmFid.read(4))[0]
+            boneList[i].nameHash = hash
+        
+        
+        for i in range(header.numFrames):
+            for j in range(header.numBones):
+                (posIndex, scaleIndex, quatIndex) = struct.unpack('<3H', anmFid.read(6))
+                boneList[j].add_frame(positions[posIndex], orientations[quatIndex], positions[scaleIndex])
     else:
         raise ValueError("ANM File Version not supported.", header.version)
 
@@ -267,8 +372,15 @@ def applyANM(header, boneList):
 
     scene = bpy.context.scene
     ob = bpy.context.object
+    bones = ob.data.bones
     editBones = ob.data.edit_bones
     poseBones = ob.pose.bones
+    
+    if (header.version == 5):
+        for i, bone in enumerate(boneList):
+            # find the skeleton bone with a matching name hash to assign the correct name to the animation bone
+            blenderBone = [b for b in bones if bone.nameHash == b['lol_nameHash']][0]
+            bone.name = blenderBone.name
 
     parentOffset = {}
     parentOffRot = {}

@@ -154,7 +154,7 @@ class sklBone():
                     sklFile.read(self.__size__v0))
             self.id = fields[1]
             self.parent = fields[2]
-            self.name = fields[4]
+            self.nameHash = fields[4]
             twopointone = fields[5]
             self.position = list(fields[6:9])
             self.position[2] *= -1. # make z negative
@@ -389,6 +389,9 @@ def buildSKL(boneList, version):
             roll = math.atan2(oldRollVec.cross(newRollVec) * normal, oldRollVec * newRollVec)
             
             newBone.roll = roll
+            
+            # store nameHash as custom bone property for animation import
+            newBone['lol_nameHash'] = bone.nameHash
 
         # set bones with children to be average of the
         # for boneID, bone in enumerate(boneList):
