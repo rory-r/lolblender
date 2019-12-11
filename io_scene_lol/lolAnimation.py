@@ -267,80 +267,49 @@ def applyANM(header, boneList):
 
     scene = bpy.context.scene
     ob = bpy.context.object
-    eb = ob.data.edit_bones
-    bs = ob.data.bones
-    pb = ob.pose.bones
+    editBones = ob.data.edit_bones
+    poseBones = ob.pose.bones
 
-    restPose = {}
     parentOffset = {}
     parentOffRot = {}
     
-    for b in bs:
-        poseBone = pb[b.name]
-        if poseBone.parent != None:
-            parentOffset[b.name] = mathutils.Vector(poseBone.head - poseBone.parent.head) * poseBone.matrix
-            parentOffRot[b.name] = pb[b.parent.name].matrix.to_quaternion().rotation_difference(pb[b.name].matrix.to_quaternion())
+    for editBone in editBones:
+        if editBone.parent != None:
+            # get offset from parent bone in bone's object space
+            parentOffset[editBone.name] = mathutils.Vector(editBone.head - editBone.parent.head) * editBone.matrix
+            # get bone rotation relative to the parent bone
+            parentOffRot[editBone.name] = editBone.parent.matrix.to_quaternion().rotation_difference(editBone.matrix.to_quaternion())
         else:
-            parentOffset[b.name] = mathutils.Vector(poseBone.head) * poseBone.matrix
-            parentOffRot[b.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0]).rotation_difference(pb[b.name].matrix.to_quaternion())
-        
-        rot = b.matrix_local.decompose()[1]
+            parentOffset[editBone.name] = mathutils.Vector(editBone.head) * editBone.matrix
+            parentOffRot[editBone.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0]).rotation_difference(editBone.matrix.to_quaternion())
 
-        # multiply below by desired translation in world coords to get new
-        # "location" for pose
-        rotInv = rot.inverted() 
-
-        h = b.head_local  # absolute coordinate
-        if b.parent is not None:
-            ph = b.parent.head_local
-        else:
-            ph = mathutils.Vector([0,0,0])
-        h_rel = h - ph
-        restPose[b.name] = {'rot' : rot,
-                'rotInv' : rotInv,
-                'hPos' : h,
-                'hPosRel' : h_rel,
-                'parentPos' : ph
-        }
-
-    if header.version in [0, 2, 3]:
+    if header.version in [1, 3, 4, 5]:
         scene.frame_end = header.numFrames - 1
         scene.frame_start = 0
         for f in range(header.numFrames):
             print("frame %s processing" % f)
             scene.frame_set(f)
-            boneOrientations = {}
-            bonePositions = {}
+            
             for b in boneList:
                 n = b.name
-                boneOrientations[n] = b.orientations[f]
-                bonePositions[n] = b.positions[f]
+                boneRotation = b.orientations[f]
+                bonePosition = b.positions[f]
 
-                armatureBone = eb[n]
-                poseBone = pb[n]
-                bone = bs[n]
-                bonePos = bonePositions[n]
+                poseBone = poseBones[n]
+                editBone = editBones[n]
                 
                 if poseBone.parent:
-                    # armatureBone.head = poseBone.parent.tail
-                    parentName = poseBone.parent.name
-                    parOrientation = boneOrientations[parentName]
-                    # bPos.rotate(parOrientation)
-                    # boneOrientations[n] = parOrientation * b.orientations[f]
-                    # bonePositions[n] = bonePositions[parentName] + parOrientation * b.positions[f]
-                    # armatureBone.head = armatureBone.parent.tail
-                    
-                    bonePos = bonePos * pb[parentName].matrix.inverted()
-                    bonePos = bonePos * bs[n].matrix_local
-                else:
-                    bonePos = bonePos * bs[n].matrix_local
-                    parOrientation = mathutils.Quaternion([1,0,0,0])
+                    # bonePosition is in parent bone's object space so convert to absolute position
+                    bonePosition = bonePosition * poseBone.parent.matrix.inverted()
                 
-                poseBone.rotation_quaternion = parentOffRot[n].inverted() * boneOrientations[n]
-                poseBone.location = bonePos - parentOffset[n]
+                # convert absolute position to position in bone's object space
+                bonePosition = bonePosition * editBone.matrix
+                
+                poseBone.rotation_quaternion = parentOffRot[n].inverted() * boneRotation
+                poseBone.location = bonePosition - parentOffset[n]
 
                 for dp in ["rotation_quaternion", "location"]:
-                    pb[n].keyframe_insert(data_path=dp, frame=f)
+                    poseBone.keyframe_insert(data_path=dp, frame=f)
             # ob.keyframe_insert(data_path="pose")
                 
 
