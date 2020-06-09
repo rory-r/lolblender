@@ -18,8 +18,9 @@
 # <pep8 compliant>
 #from collections import UserDict
 import struct
+from collections import OrderedDict
 testFile = '/var/tmp/downloads/lol/Wolfman/Wolfman.skn'
-    
+
 class sknHeader():
 
     def __init__(self):
@@ -34,9 +35,9 @@ class sknHeader():
 
     def fromFile(self, sknFid):
         buf = sknFid.read(self.__size__)
-        (self.magic, self.version, 
+        (self.magic, self.version,
                 self.numObjects) = struct.unpack(self.__format__, buf)
-        
+
         if (self.version in [1, 2, 4]):
             buf = sknFid.read(struct.calcsize('<i'))
             self.numMaterials = struct.unpack('<i', buf)[0]
@@ -44,7 +45,7 @@ class sknHeader():
             self.numMaterials = 1
         else:
             raise ValueError('Unknown version: ', self.version)
-        
+
         print("SKN version: %s" % self.version)
         print("numObjects: %s" % self.numObjects)
         print("numMaterials: %s" % self.numMaterials)
@@ -54,7 +55,7 @@ class sknHeader():
                 self.numObjects)
 
         sknFid.write(buf)
-        
+
         sknFid.write(struct.pack('<i', self.numMaterials))
 
     def __str__(self):
@@ -71,7 +72,7 @@ class sknMaterial():
         self.__size__v124 = struct.calcsize(self.__format__v124)
         self.__format__v0 = '<2I'
         self.__size__v0 = struct.calcsize(self.__format__v0)
-        
+
         self.name = name
         self.startVertex = startVertex
         self.numVertices = numVertices
@@ -83,14 +84,14 @@ class sknMaterial():
         if (version in [1,2,4]):
             buf = sknFid.read(self.__size__v124)
             fields = struct.unpack(self.__format__v124, buf)
-            
+
             self.name = bytes.decode(fields[0]).rstrip('\0')
             (self.startVertex, self.numVertices) = fields[1:3]
             (self.startIndex, self.numIndices) = fields[3:5]
         elif (version == 0):
             buf = sknFid.read(self.__size__v0)
             fields = struct.unpack(self.__format__v0, buf)
-            
+
             self.name = 'lolMaterial'
             self.startVertex = 0
             self.startIndex = 0
@@ -118,7 +119,7 @@ class sknMetaData():
         self.__format__v4 = '<3iIi10f'
         self.__size__v12 = struct.calcsize(self.__format__v12)
         self.__size__v4 = struct.calcsize(self.__format__v4)
-        
+
         self.part1 = part1
         self.numIndices = numIndices
         self.numVertices = numVertices
@@ -167,7 +168,7 @@ class sknMetaData():
             sknFid.write(buf)
         else:
             raise ValueError("Version %s not supported" % version)
-        
+
 
     def __str__(self):
         if self.version in [1,2]:
@@ -208,7 +209,7 @@ class sknVertex():
         self.weights = fields[7:11]
         self.normal = fields[11:14]
         self.texcoords = fields[14:16]
-        
+
         if(containsVertexColor > 0):
             buf = sknFid.read(struct.calcsize('<4B'))
             fields = struct.unpack('<4B', buf)
@@ -248,7 +249,7 @@ def importSKN(filepath):
     header.fromFile(sknFid)
 
     materials = []
-    
+
     for k in range(header.numMaterials):
         materials.append(sknMaterial())
         materials[-1].fromFile(sknFid, header.version)
@@ -302,11 +303,11 @@ def buildMesh(filepath):
     from os import path
     (header, materials, metaData, indices, vertices) = importSKN(filepath)
     import bmesh
-    
-    ''' 
+
+    '''
     if header.version > 0 and materials[0].numMaterials == 2:
         print('ERROR:  Skins with numMaterials = 2 are currently unreadable.  Exiting')
-        return{'CANCELLED'} 
+        return{'CANCELLED'}
     '''
     numIndices = len(indices)
     numVertices = len(vertices)
@@ -336,7 +337,7 @@ def buildMesh(filepath):
     mesh.update()
 
     bpy.ops.object.select_all(action='DESELECT')
-    
+
     #Create object from mesh
     obj = bpy.data.objects.new('lolMesh', mesh)
 
@@ -356,7 +357,7 @@ def buildMesh(filepath):
         for k, loop in enumerate(obj.data.loops):
             alphaValue = vertices[loop.vertex_index].vertexColor[3]
             vertColorAlphaLayer.data[k].color = (alphaValue, 0.0, 0.0)
-    
+
     #Create UV texture coords
     texList = []
     uvtexName = 'lolUVtex'
@@ -373,51 +374,51 @@ def buildMesh(filepath):
     uv_layer.foreach_set("uv", set)
 
     #Set normals
-    #Needs to be done after the UV unwrapping 
-    obj.data.vertices.foreach_set('normal', normList) 
+    #Needs to be done after the UV unwrapping
+    obj.data.vertices.foreach_set('normal', normList)
 
     for m in materials:
         tex = bpy.data.textures.new(m.name + '_texImage', type='IMAGE')
-        
+
         mat = bpy.data.materials.new(m.name)
         mat.use_shadeless = True
-        
+
         mtex = mat.texture_slots.add()
         mtex.texture = tex
         mtex.texture_coords = 'UV'
         mtex.use_map_color_diffuse = True
-        
+
         obj.data.materials.append(mat)
-    
+
     bpy.context.scene.objects.active = obj
     bpy.ops.object.mode_set(mode='EDIT')
-    
+
     bm = bmesh.from_edit_mesh(obj.data)
     bm.verts.ensure_lookup_table()
-    
+
     for m, material in enumerate(materials):
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.context.active_object.active_material_index = m
-        
+
         for i in range(material.startIndex, material.startIndex + material.numIndices, 3):
             f = bm.faces.get([bm.verts[indices[i]], bm.verts[indices[i+1]], bm.verts[indices[i+2]]])
             f.select = True
-        
+
         bpy.ops.object.material_slot_assign()
-    
+
     bm.free()
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.object.mode_set(mode='OBJECT')
-    
+
     #Create material
     #materialName = 'lolMaterial'
     #material = bpy.data.materials.ne(materialName)
-    mesh.update() 
+    mesh.update()
     #set active
     obj.select = True
 
     return {'FINISHED'}
-    
+
 def addDefaultWeights(boneList, sknVertices, armatureObj, meshObj):
 
     '''Add an armature modifier to the mesh'''
@@ -459,22 +460,22 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     bpy.ops.object.select_all(action='DESELECT')
     meshObj.select = True
 
-    
+
     containsVertexColor = ('lolVertexColor' in meshObj.data.vertex_colors) and ('lolVertexColorAlpha' in meshObj.data.vertex_colors)
-    
+
     #Build vertex data lists and dictionary of vertex-uv pairs
-    vertexUvs = {}
+    vertexUvs = OrderedDict()
     vertices = []
     vertexNormals = []
     vertexWeights = []
     vtxColors = []
     indices = []
-    
+
     #Read materials
     matHeaders = []
-    
+
     bpy.ops.object.mode_set(mode='EDIT')
-    
+
     bm = bmesh.from_edit_mesh(meshObj.data)
     bm.verts.ensure_lookup_table()
     bm.verts.index_update()
@@ -482,28 +483,28 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     for f in bm.faces:
         for l in f.loops:
             l.index = -1
-    
+
     #bmesh data layers
     weightLayer = bm.verts.layers.deform.active
     uvLayer = bm.loops.layers.uv['lolUVtex']
     if containsVertexColor:
         vertexColorLayer = bm.loops.layers.color['lolVertexColor']
         vertexColorAlphaLayer = bm.loops.layers.color['lolVertexColorAlpha']
-    
+
     for m, matSlot in enumerate(meshObj.material_slots):
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.context.active_object.active_material_index = m
         bpy.ops.object.material_slot_select()
-        
+
         matStartVert = len(vertices)
         matStartIndex = len(indices)
-        
+
         for f in bm.faces:
             if f.select == True:
                 #check if the face is a triangle
                 if (len(f.verts) != 3):
                     raise ValueError("Found a face which is not a triangle. Every face has to be a triangle!")
-                
+
                 for loop in f.loops:
                     #every vertex should have one uv coordinate -> every loop with unique uv or vert coordinate exports as unique vertex
                     loopId = loop[uvLayer].uv[:] + loop.vert.co[:]
@@ -519,42 +520,42 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
                             #append alpha value from different layer
                             vtxColor = vtxColor + vtxColorAlpha
                             vtxColors.append(vtxColor)
-                        
+
                     indices.append(vertexUvs[loopId])
-        
+
         indexCount = len(indices) - matStartIndex
         vertCount = len(vertices) - matStartVert
         matHeaders.append(sknMaterial(matSlot.material.name, matStartVert, vertCount, matStartIndex, indexCount))
-    
+
     bm.free()
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.object.mode_set(mode='OBJECT')
-    
+
     vertexUvs = list(vertexUvs.keys())
     numMats = len(meshObj.material_slots)
     numIndices = len(indices)
     numVertices = len(vertices)
-    
+
     if containsVertexColor:
         vertexBlockSize = 56
     else:
         vertexBlockSize = 52
-    
+
     boundingBoxMin = meshObj.bound_box[0][0:3]
     boundingBoxMax = meshObj.bound_box[6][0:3]
-    
+
     #approximate bounding sphere
     sphereCenter = ((boundingBoxMax[0] + boundingBoxMin[0]) * 0.5, (boundingBoxMax[1] + boundingBoxMin[1]) * 0.5, (boundingBoxMax[2] + boundingBoxMin[2]) * 0.5)
-    
+
     maxDistance = 0.0
     for i in range(3):
         distance = sphereCenter[i] - boundingBoxMin[i]
         if (distance > maxDistance):
             maxDistance = distance
-    
+
     boundingSpherePos = sphereCenter
     boundingSphereRadius = maxDistance
-    
+
     #Write header block
     if BASE_ON_IMPORT:
         (import_header, import_mats, import_meta_data, import_indices,
@@ -569,9 +570,9 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
 
     meta_data = sknMetaData(0, numIndices, numVertices, vertexBlockSize, containsVertexColor, boundingBoxMin, boundingBoxMax, boundingSpherePos, boundingSphereRadius)
 
-    #create output file 
+    #create output file
     sknFid = open(output_filepath, 'wb')
-    
+
     #write header
     header.numMaterials = numMats
     header.toFile(sknFid)
@@ -586,7 +587,7 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     for idx in indices:
         buf = struct.pack('<h', idx)
         sknFid.write(buf)
-    
+
     #Write vertices
     sknVtx = sknVertex()
     for idx, vtx in enumerate(vertices):
@@ -595,7 +596,7 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
         sknVtx.position[0] = vtx[0]
         sknVtx.position[1] = vtx[1]
         sknVtx.position[2] = vtx[2]
-        
+
         sknVtx.normal[0] = vertexNormals[idx][0]
         sknVtx.normal[1] = vertexNormals[idx][1]
         sknVtx.normal[2] = vertexNormals[idx][2]
@@ -608,12 +609,12 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
         if len(vtxWeights) > 4:
             #Sort by weight in decending order
             vtxWeights = sorted(vtxWeights, key=lambda t: t[1], reverse=True)
-            
+
             #Find sum of four largets weights.
             tmpSum = 0
             for k in range(4):
                 tmpSum += vtxWeights[k][1]
-            
+
             #Spread remaining weight proportionally across bones
             remWeight = 1-tmpSum
             for k in range(4):
@@ -626,21 +627,21 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
             weightSum = 0.0
             for group, weight in vtxWeights:
                 weightSum += weight
-            
+
             for vtxIdx, (group, weight) in enumerate(vtxWeights):
                 sknVtx.boneIndex[vtxIdx] = group
                 sknVtx.weights[vtxIdx] = weight / weightSum
-        
+
         #Get UV's
         sknVtx.texcoords[0] = vertexUvs[idx][0]
         sknVtx.texcoords[1] = 1 - vertexUvs[idx][1]   #flip y-coordinates
-        
+
         if containsVertexColor:
             sknVtx.vertexColor = vtxColors[idx]
-        
+
         #writeout the vertex
         sknVtx.toFile(sknFid, containsVertexColor)
-    
+
     if VERSION >= 2:  # some extra ints in v2+. not sure what they do, non-0 in v4?
         if header.endTab is None or len(header.endTab) < 3:
             header.endTab = [0, 0, 0]
@@ -654,10 +655,10 @@ def importSCO(filename):
     fid = open(filename, 'r')
     objects = []
     inObject = False
-    
+
     #Loop until we reach the end of the file
     while True:
-        
+
         line = fid.readline()
         #Check if we've reached the file end
         if line == '':
@@ -667,7 +668,7 @@ def importSCO(filename):
             line = line.strip().lower()
 
         #Start checking against keywords
-    
+
         #Are we just starting an object?
         if line.startswith('[objectbegin]') and not inObject:
             inObject = True
@@ -698,7 +699,7 @@ def importSCO(filename):
 
             elif line.startswith('pivotpoint='):
                 objects[-1].pivotpoint = line.split()[-1]
-            
+
             elif line.startswith('verts='):
                 verts = line.split()[-1]
                 for k in range(int(verts)):
@@ -708,11 +709,11 @@ def importSCO(filename):
 
             elif line.startswith('faces='):
                 faces = line.split()[-1]
-                
+
                 for k in range(int(faces)):
                     fields = fid.readline().strip().split()
                     nVtx = int(fields[0])
-                    
+
                     vIds = [int(x) for x in fields[1:4]]
                     mat = fields[4]
                     uvs = [ [] ]*3
@@ -728,7 +729,7 @@ def importSCO(filename):
                     #less
                     #if len(mat) > 16:
                         #mat = mat[:16]
-                    
+
                     #Add the face index to the material
                     try:
                         objects[-1].materialDict[mat].append(k)
@@ -761,62 +762,62 @@ def buildSCO(filename):
         scene.objects.link(meshObj)
 
         bpy.context.scene.objects.active = meshObj
-        
+
         bpy.ops.object.mode_set(mode='EDIT')
-        
+
         bm = bmesh.from_edit_mesh(mesh)
         bm.faces.ensure_lookup_table()
-        
+
         for matslotIndex, matName in enumerate(sco.materialDict.keys()):
             tex = bpy.data.textures.new(matName + '_texImage', type='IMAGE')
-            
+
             mat = bpy.data.materials.new(matName)
             mat.use_shadeless = True
-            
+
             mtex = mat.texture_slots.add()
             mtex.texture = tex
             mtex.texture_coords = 'UV'
             mtex.use_map_color_diffuse = True
-            
+
             meshObj.data.materials.append(mat)
-            
+
             bpy.ops.mesh.select_all(action='DESELECT')
             meshObj.active_material_index = matslotIndex
-            
+
             for faceIndex in sco.materialDict[matName]:
                 bm.faces[faceIndex].select = True
-            
+
             bpy.ops.object.material_slot_assign()
-        
+
         uvtexName = 'scoUVtex'
         meshObj.data.uv_textures.new(uvtexName)
-        
+
         uvLayer = bm.loops.layers.uv[uvtexName]
         for f in bm.faces:
             for i, loop in enumerate(f.loops):
                 loop[uvLayer].uv = mathutils.Vector(sco.uvDict[f.index][i])
-        
+
         bm.free()
         bpy.ops.object.mode_set(mode='OBJECT')
 
         mesh.update()
-        
+
 
 def exportSCO(meshObj, output_filepath):
     import bpy
     import mathutils
     import bmesh
-    
+
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.select_all(action='DESELECT')
     meshObj.select = True
     mesh = meshObj.data
-    
+
     scoName = meshObj.name
     vertCount = len(mesh.vertices)
-    
+
     vertexList = []
-    
+
     centralpoint = mathutils.Vector([0,0,0])
     for vert in mesh.vertices:
         vertexList.append(vert.co.copy())
@@ -825,39 +826,39 @@ def exportSCO(meshObj, output_filepath):
     print(vertexList[0])
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
-    
+
     faceCount = len(bm.faces)
-    
+
     faceList = []
     materialDict = {}
     uvList = [None] * faceCount
-    
+
     uvLayer = bm.loops.layers.uv['scoUVtex']
     for m, matSlot in enumerate(meshObj.material_slots):
         bpy.ops.mesh.select_all(action='DESELECT')
         bpy.context.active_object.active_material_index = m
         bpy.ops.object.material_slot_select()
-        
+
         for f in bm.faces:
             if f.select == True:
                 materialDict.setdefault(matSlot.material.name, []).append(f.index)
-                
+
                 faceList.append([])
-                
+
                 uvList[f.index] = []
                 for loop in f.loops:
                     faceList[-1].append(loop.vert.index)
                     uvList[f.index].append(loop[uvLayer].uv.copy())
                     uvList[f.index][-1][1] = 1 - uvList[f.index][-1][1]
-    
+
     bm.free()
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.object.mode_set(mode='OBJECT')
-    
+
     scoFid = open(output_filepath, 'w')
-    
+
     scoFid.write('[ObjectBegin]\n')
-    
+
     scoFid.write('Name= ' + scoName + '\n')
     scoFid.write('CentralPoint= ' + '{:.4f}'.format(centralpoint[0]) + ' ' + '{:.4f}'.format(centralpoint[1]) + ' ' + '{:.4f}'.format(centralpoint[2]) + '\n')
     scoFid.write('Verts= ' + str(vertCount) + '\n')
@@ -866,7 +867,7 @@ def exportSCO(meshObj, output_filepath):
     print('{:.4f}'.format(vertexList[0][1]))
     for vert in vertexList:
         scoFid.write('{:.4f}'.format(vert[0]) + ' ' + '{:.4f}'.format(vert[1]) + ' ' + '{:.4f}'.format(vert[2]) + '\n')
-    
+
     scoFid.write('Faces= ' + str(faceCount) + '\n')
     for matName in materialDict.keys():
         faces = []
@@ -875,7 +876,7 @@ def exportSCO(meshObj, output_filepath):
         for fIndex, f in enumerate(faces):
             indexCount = len(f)
             scoFid.write(str(indexCount) + '	')
-            
+
             scoFid.write('{:4d}'.format(f[0]))
             for i in range(1, indexCount, 1):
                 scoFid.write('{:5d}'.format(f[i]))
@@ -887,12 +888,12 @@ def exportSCO(meshObj, output_filepath):
                     scoFid.write(' ')
                 scoFid.write('{:.12f}'.format(uvs[0]) + ' ' + '{:.12f}'.format(uvs[1]))
             scoFid.write('\n')
-    
+
     scoFid.write('[ObjectEnd]\n\n')
 
 
 if __name__ == '__main__':
-    (header, materials, numIndices, 
+    (header, materials, numIndices,
             numVertices, indices, vertices) = importSKN(testFile)
 
     print(header)
