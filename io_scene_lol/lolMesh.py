@@ -392,7 +392,7 @@ def buildMesh(filepath):
 
     # Build the mesh
     # Get current scene
-    scene = bpy.context.scene
+    scene = bpy.context.collection
     # Create mesh
     # Use the filename base as the meshname.  i.e. path/to/Akali.skn -> Akali
     meshName = path.split(filepath)[-1]
@@ -425,7 +425,7 @@ def buildMesh(filepath):
     # Create UV texture coords
     texList = []
     uvtexName = "lolUVtex"
-    obj.data.uv_textures.new(uvtexName)
+    obj.data.uv_layers.new(name=uvtexName)
     uv_layer = obj.data.uv_layers[-1].data  # sets layer to the above texture
     set = []
     for k, loop in enumerate(obj.data.loops):
@@ -445,16 +445,22 @@ def buildMesh(filepath):
         tex = bpy.data.textures.new(m.name + "_texImage", type="IMAGE")
 
         mat = bpy.data.materials.new(m.name)
-        mat.use_shadeless = True
+        mat.shadow_method = 'NONE'
 
-        mtex = mat.texture_slots.add()
-        mtex.texture = tex
-        mtex.texture_coords = "UV"
-        mtex.use_map_color_diffuse = True
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes["Principled BSDF"]
+        texImage = mat.node_tree.nodes.new('ShaderNodeTexImage')
+        texImage.image = tex.image
+        mat.node_tree.links.new(bsdf.inputs['Base Color'], texImage.outputs['Color'])
+
+        # mtex = mat.texture_slots.add()
+        # mtex.texture = tex
+        # mtex.texture_coords = "UV"
+        # mtex.use_map_color_diffuse = True
 
         obj.data.materials.append(mat)
 
-    bpy.context.scene.objects.active = obj
+    bpy.context.view_layer.objects.active = obj
     bpy.ops.object.mode_set(mode="EDIT")
 
     bm = bmesh.from_edit_mesh(obj.data)
@@ -479,7 +485,7 @@ def buildMesh(filepath):
     # material = bpy.data.materials.ne(materialName)
     mesh.update()
     # set active
-    obj.select = True
+    obj.select_set(True)
 
     return {"FINISHED"}
 
@@ -522,7 +528,7 @@ def exportSKN(meshObj, output_filepath, input_filepath, BASE_ON_IMPORT, VERSION)
     # Go into object mode & select only the mesh
     bpy.ops.object.mode_set(mode="OBJECT")
     bpy.ops.object.select_all(action="DESELECT")
-    meshObj.select = True
+    meshObj.select_set(True)
     containsVertexColor = ("lolVertexColor" in meshObj.data.vertex_colors) and (
         "lolVertexColorAlpha" in meshObj.data.vertex_colors
     )
@@ -832,7 +838,7 @@ def buildSCO(filename):
     for sco in scoObjects:
 
         # get scene
-        scene = bpy.context.scene
+        scene = bpy.context.collection
         mesh = bpy.data.meshes.new(sco.name)
         mesh.from_pydata(sco.vtxList, [], sco.faceList)
         mesh.update()
@@ -852,7 +858,7 @@ def buildSCO(filename):
             tex = bpy.data.textures.new(matName + "_texImage", type="IMAGE")
 
             mat = bpy.data.materials.new(matName)
-            mat.use_shadeless = True
+            mat.shadow_method = 'NONE'
 
             mtex = mat.texture_slots.add()
             mtex.texture = tex
@@ -870,7 +876,7 @@ def buildSCO(filename):
             bpy.ops.object.material_slot_assign()
 
         uvtexName = "scoUVtex"
-        meshObj.data.uv_textures.new(uvtexName)
+        meshObj.data.uv_layers.new(name=uvtexName)
 
         uvLayer = bm.loops.layers.uv[uvtexName]
         for f in bm.faces:
@@ -890,7 +896,7 @@ def exportSCO(meshObj, output_filepath):
 
     bpy.ops.object.mode_set(mode="OBJECT")
     bpy.ops.object.select_all(action="DESELECT")
-    meshObj.select = True
+    meshObj.select_set(True)
     mesh = meshObj.data
 
     scoName = meshObj.name

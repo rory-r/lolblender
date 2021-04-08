@@ -32,18 +32,18 @@ class IMPORT_OT_lol(bpy.types.Operator, ImportHelper):
     bl_label="Import LoL"
     bl_idname="import.lol"
 
-    SKN_FILE = props.StringProperty(name='Mesh', description='Model .skn file')
-    SKL_FILE = props.StringProperty(name='Skeleton', description='Model .skl file')
-    DDS_FILE = props.StringProperty(name='Texture', description='Model .dds file')    
-    MODEL_DIR = props.StringProperty()
-    CLEAR_SCENE = props.BoolProperty(name='ClearScene', description='Clear current scene before importing?', default=True)
-    APPLY_WEIGHTS = props.BoolProperty(name='LoadWeights', description='Load default bone weights from .skn file', default=True)
+    SKN_FILE : props.StringProperty(name='Mesh', description='Model .skn file')
+    SKL_FILE : props.StringProperty(name='Skeleton', description='Model .skl file')
+    DDS_FILE : props.StringProperty(name='Texture', description='Model .dds file')    
+    MODEL_DIR : props.StringProperty()
+    CLEAR_SCENE : props.BoolProperty(name='ClearScene', description='Clear current scene before importing?', default=True)
+    APPLY_WEIGHTS : props.BoolProperty(name='LoadWeights', description='Load default bone weights from .skn file', default=True)
     
        
     def draw(self, context):
         layout = self.layout
         fileProps = context.space_data.params
-        self.MODEL_DIR = fileProps.directory
+        self.MODEL_DIR = fileProps.directory.decode()
         
         selectedFileExt = path.splitext(fileProps.filename)[-1].lower()
         if selectedFileExt == '.skn':
@@ -74,13 +74,13 @@ class IMPORT_OT_lolanm(bpy.types.Operator, ImportHelper):
     bl_label="Import LoL Animation"
     bl_idname="import.lolanm"
 
-    ANM_FILE = props.StringProperty(name='Animation', description='Animation .anm file')
-    MODEL_DIR = props.StringProperty()
+    ANM_FILE : props.StringProperty(name='Animation', description='Animation .anm file')
+    MODEL_DIR : props.StringProperty()
        
     def draw(self, context):
         layout = self.layout
         fileProps = context.space_data.params
-        self.MODEL_DIR = fileProps.directory
+        self.MODEL_DIR = fileProps.directory.decode()
         
         selectedFileExt = path.splitext(fileProps.filename)[-1].lower()
         if selectedFileExt == '.anm':
@@ -99,16 +99,16 @@ class EXPORT_OT_lolanm(bpy.types.Operator, ImportHelper):
     bl_label="Export LoL Animation"
     bl_idname="export.lolanm"
     
-    OUTPUT_FILE = props.StringProperty(name='Export File', description='File to which animation will be exported')
-    INPUT_FILE = props.StringProperty(name='Import File', description='File to import certain metadata from')
-    OVERWRITE_FILE_VERSION = props.BoolProperty(name='Overwrite File Version', description='Write a version different from the imported file', default=False)
-    VERSION = props.IntProperty(name='File Version', description='Overwrite file version', default=3)
+    OUTPUT_FILE : props.StringProperty(name='Export File', description='File to which animation will be exported')
+    INPUT_FILE : props.StringProperty(name='Import File', description='File to import certain metadata from')
+    OVERWRITE_FILE_VERSION : props.BoolProperty(name='Overwrite File Version', description='Write a version different from the imported file', default=False)
+    VERSION : props.IntProperty(name='File Version', description='Overwrite file version', default=3)
     
     filename_ext = '.anm'
     def draw(self, context):
         layout = self.layout
         fileProps = context.space_data.params
-        self.MODEL_DIR = fileProps.directory
+        self.MODEL_DIR = fileProps.directory.decode()
 
         selectedFileExt = path.splitext(fileProps.filename)[-1].lower()
         
@@ -133,17 +133,17 @@ class EXPORT_OT_lol(bpy.types.Operator, ExportHelper):
     bl_idname="export.lol"
     bl_label = "Export .skn"
 
-    VERSION = props.IntProperty(name='Version No.', description='.SKN version number', default=4)
-    OUTPUT_FILE = props.StringProperty(name='Export File', description='File to which model will be exported')
-    BASE_ON_IMPORT = props.BoolProperty(name='Base On Imported SKN', description='Base writing on an imported SKN of choice', default=True)
-    INPUT_FILE = props.StringProperty(name='Import File', description='File to import certain metadata from')
-    MODEL_DIR = props.StringProperty()
+    VERSION : props.IntProperty(name='Version No.', description='.SKN version number', default=4)
+    OUTPUT_FILE : props.StringProperty(name='Export File', description='File to which model will be exported')
+    BASE_ON_IMPORT : props.BoolProperty(name='Base On Imported SKN', description='Base writing on an imported SKN of choice', default=True)
+    INPUT_FILE : props.StringProperty(name='Import File', description='File to import certain metadata from')
+    MODEL_DIR : props.StringProperty()
 
     filename_ext = '.skn'
     def draw(self, context):
         layout = self.layout
         fileProps = context.space_data.params
-        self.MODEL_DIR = fileProps.directory
+        self.MODEL_DIR = fileProps.directory.decode()
 
         selectedFileExt = path.splitext(fileProps.filename)[-1].lower()
         
@@ -171,15 +171,15 @@ class EXPORT_OT_skl(bpy.types.Operator, ExportHelper):
     bl_idname="export.skl"
     bl_label = "Export .skl"
 
-    OUTPUT_FILE = props.StringProperty(name='Export File', description='File to which skeleton will be exported')
-    INPUT_FILE = props.StringProperty(name='Import File', description='File to import certain metadata from')
-    MODEL_DIR = props.StringProperty()
+    OUTPUT_FILE : props.StringProperty(name='Export File', description='File to which skeleton will be exported')
+    INPUT_FILE : props.StringProperty(name='Import File', description='File to import certain metadata from')
+    MODEL_DIR : props.StringProperty()
 
     filename_ext = '.skl'
     def draw(self, context):
         layout = self.layout
         fileProps = context.space_data.params
-        self.MODEL_DIR = fileProps.directory
+        self.MODEL_DIR = fileProps.directory.decode()
 
         selectedFileExt = path.splitext(fileProps.filename)[-1].lower()
         
@@ -264,9 +264,9 @@ def import_char(MODEL_DIR="", SKN_FILE="", SKL_FILE="", DDS_FILE="",
         lolMesh.buildMesh(SKN_FILEPATH)
         meshObj = bpy.data.objects['lolMesh']
         bpy.ops.object.select_all(action='DESELECT')
-        meshObj.select = True
+        meshObj.select_set(True)
         bpy.ops.transform.resize(value=(1,1,-1), constraint_axis=(False, False,
-            True), constraint_orientation='GLOBAL')
+            True), orient_type='GLOBAL')
         #meshObj.name = 'lolMesh'
         #Presently io_scene_obj.load() does not import vertex normals, 
         #so do it ourselves
@@ -419,17 +419,17 @@ def register():
     bpy.utils.register_class(IMPORT_OT_lol)
     bpy.utils.register_class(IMPORT_OT_lolanm)
     bpy.utils.register_class(IMPORT_OT_sco)
-    bpy.types.INFO_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
     bpy.utils.register_class(EXPORT_OT_lol)
     bpy.utils.register_class(EXPORT_OT_skl)
     bpy.utils.register_class(EXPORT_OT_lolanm)
     bpy.utils.register_class(EXPORT_OT_sco)
-    bpy.types.INFO_MT_file_export.append(menu_func_export)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 def unregister():
-    bpy.types.INFO_MT_file_import.remove(menu_func_import)
-    bpy.types.INFO_MT_file_export.remove(menu_func_export)
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
 
 
