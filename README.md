@@ -1,10 +1,12 @@
 # lolblender
 
-Python addon to use League of Legends files into blender, a 3d-modeling software.
+Python addon to import League of Legends files into blender, a 3d-modeling software.
 
 
 
 # History
+This project has been forked in order to update it to the latest Blender version (2.8+). This fork is only compatible with Blender 2.8 and up. The latest addon compatible with 2.7 is [here](https://github.com/BilbozZ/lolblender).
+
 This project has been imported into GitHub in order to update it to the latest Blender version (2.74, should be compatible with 2.7x), available at [blender.org](http://www.blender.org/), and update it to be compatible with newer versions of League of Legends .SKN, .SKL, and other related files.
 
 The latest commit to the trunk as of exporting can be found [here](https://github.com/lispascal/lolblender/commit/b45817c764f6fa6423bcb67e9ed1b649f6bae405), and browsed [here](https://github.com/lispascal/lolblender/tree/b45817c764f6fa6423bcb67e9ed1b649f6bae405). The latest code is probably in those Trunk and Branch folders. These contain work exclusively by Zac Berkowitz, who maintained the repository on Google Code. That code was made for Blender 2.5
@@ -15,7 +17,7 @@ After those commits, the directories were restructured. Releases will be put up 
 This project is licensed under GPLv3. Disclaimers can be found on the source files, and also in LICENSE.txt. If there are any License violations, please contact lispascal through GitHub or create a New Issue, so they can be resolved.
 
 # Requirements
-This is an addon for Blender3D 2.7.  It has been tested for Blender 2.74 on Windows 8.1.
+This is an addon for Blender3D 2.8.  It has been tested for Blender 2.83 on Windows 10.
 
 Blender homepage:  http://www.blender.org
 
@@ -25,7 +27,7 @@ Daily builds:      http://www.graphicall.org
 To install, copy the io_scene_lol folder and contents
 to the scripts/addons directory of your blender install.
 
-blender/2.74/scripts/addons
+blender/2.80/scripts/addons
 
 Open up Blender's user preferences
 ![Position of User Preferences](http://imgur.com/b8Wv4.png)
