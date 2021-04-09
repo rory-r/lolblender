@@ -338,7 +338,7 @@ def buildSKL(boneList, version):
             normal = mathutils.Vector((bone.matrix[0][1], bone.matrix[1][1], bone.matrix[2][1]))
             
             #https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
-            roll = math.atan2(oldRollVec.cross(newRollVec) * normal, oldRollVec * newRollVec)
+            roll = math.atan2(oldRollVec.cross(newRollVec) @ normal, oldRollVec @ newRollVec)
             
             newBone.roll = roll
             
@@ -374,7 +374,7 @@ def buildSKL(boneList, version):
                 newBone.parent = parentBone
                 parQuat = boneList[boneParentID].quat
                 boneHead.rotate(parQuat)  # only apply parent rotation to self
-                bone.quat = parQuat * bone.quat  # for children
+                bone.quat = parQuat @ bone.quat  # for children
 
                 # parentPos = mathutils.Vector(boneList[boneParentID].position)
                 parentPos = parentBone.head
@@ -386,7 +386,7 @@ def buildSKL(boneList, version):
             oldRollVec = mathutils.Vector([newBone.matrix[0][0], newBone.matrix[1][0], newBone.matrix[2][0]])
             normal = mathutils.Vector((boneMatrix[0][1], boneMatrix[1][1], boneMatrix[2][1]))
             #https://stackoverflow.com/questions/5188561/signed-angle-between-two-3d-vectors-with-same-origin-within-the-same-plane
-            roll = math.atan2(oldRollVec.cross(newRollVec) * normal, oldRollVec * newRollVec)
+            roll = math.atan2(oldRollVec.cross(newRollVec) @ normal, oldRollVec @ newRollVec)
             
             newBone.roll = roll
 

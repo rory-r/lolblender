@@ -261,12 +261,13 @@ def applyANM(header, boneList):
     # http://blender.stackexchange.com/a/31709
 
     try:
-        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.objects['lolArmature'].mode_set(mode='EDIT')
+        print("TEST")
     except:
         pass
 
     scene = bpy.context.scene
-    ob = bpy.context.object
+    ob = bpy.context.scene.objects['lolArmature']
     editBones = ob.data.edit_bones
     poseBones = ob.pose.bones
 
@@ -276,11 +277,11 @@ def applyANM(header, boneList):
     for editBone in editBones:
         if editBone.parent != None:
             # get offset from parent bone in bone's object space
-            parentOffset[editBone.name] = mathutils.Vector(editBone.head - editBone.parent.head) * editBone.matrix
+            parentOffset[editBone.name] = mathutils.Vector(editBone.head - editBone.parent.head) @ editBone.matrix
             # get bone rotation relative to the parent bone
             parentOffRot[editBone.name] = editBone.parent.matrix.to_quaternion().rotation_difference(editBone.matrix.to_quaternion())
         else:
-            parentOffset[editBone.name] = mathutils.Vector(editBone.head) * editBone.matrix
+            parentOffset[editBone.name] = mathutils.Vector(editBone.head) @ editBone.matrix
             parentOffRot[editBone.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0]).rotation_difference(editBone.matrix.to_quaternion())
 
     if header.version in [1, 3, 4, 5]:
@@ -301,12 +302,12 @@ def applyANM(header, boneList):
                 
                 if poseBone.parent:
                     # bonePosition is in parent bone's object space so convert to absolute position
-                    bonePosition = bonePosition * poseBone.parent.matrix.inverted()
+                    bonePosition = bonePosition @ poseBone.parent.matrix.inverted()
                 
                 # convert absolute position to position in bone's object space
-                bonePosition = bonePosition * editBone.matrix
+                bonePosition = bonePosition @ editBone.matrix
                 
-                poseBone.rotation_quaternion = parentOffRot[n].inverted() * boneRotation
+                poseBone.rotation_quaternion = parentOffRot[n].inverted() @ boneRotation
                 poseBone.location = bonePosition - parentOffset[n]
 
                 for dp in ["rotation_quaternion", "location"]:
@@ -361,12 +362,12 @@ def exportANM(skelObj, output_filepath, input_filepath, OVERWRITE_FILE_VERSION, 
             if b.parent != None:
                 boneList[-1].unknown = 0
                 
-                parentOffset[b.name] = mathutils.Vector(b.matrix_local.decompose()[0] - b.parent.matrix_local.decompose()[0]) * b.matrix_local
+                parentOffset[b.name] = mathutils.Vector(b.matrix_local.decompose()[0] - b.parent.matrix_local.decompose()[0]) @ b.matrix_local
                 parentOffRot[b.name] = objBones[b.parent.name].matrix_local.to_quaternion().rotation_difference(b.matrix_local.to_quaternion())
             else:
                 boneList[-1].unknown = 2
                 
-                parentOffset[b.name] = mathutils.Vector(b.head) * b.matrix_local
+                parentOffset[b.name] = mathutils.Vector(b.head) @ b.matrix_local
                 parentOffRot[b.name] = mathutils.Quaternion([1.0, 0.0, 0.0, 0.0])
         
         for f in range(scene.frame_start, scene.frame_end + 1):
@@ -379,11 +380,11 @@ def exportANM(skelObj, output_filepath, input_filepath, OVERWRITE_FILE_VERSION, 
                 bonePos = poseBone.location
                 
                 bonePos = bonePos + parentOffset[n]
-                boneOrient = parentOffRot[n] * poseBone.rotation_quaternion
+                boneOrient = parentOffRot[n] @ poseBone.rotation_quaternion
                 
                 if objBone.parent != None:
-                    bonePos = bonePos * objBone.matrix_local.inverted()
-                    bonePos = bonePos * poseBone.parent.matrix
+                    bonePos = bonePos @ objBone.matrix_local.inverted()
+                    bonePos = bonePos @ poseBone.parent.matrix
                 
                 bonePos[2] = -bonePos[2]
                 

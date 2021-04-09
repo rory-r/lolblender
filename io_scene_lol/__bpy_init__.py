@@ -254,9 +254,9 @@ def import_char(MODEL_DIR="", SKN_FILE="", SKL_FILE="", DDS_FILE="",
         lolSkeleton.buildSKL(boneList, sklHeader.version)
         armObj = bpy.data.objects['Armature']
         armObj.name ='lolArmature'
-        armObj.data.draw_type = 'STICK'
+        armObj.data.display_type = 'STICK'
         armObj.data.show_axes = True
-        armObj.show_x_ray = True
+        armObj.show_in_front = True
 
     if SKN_FILE:
         SKN_FILEPATH=path.join(MODEL_DIR, SKN_FILE)
